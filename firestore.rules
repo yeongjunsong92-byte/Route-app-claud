@@ -1,0 +1,220 @@
+// firestore.rules
+// Route 앱 Firestore 보안 규칙
+//
+// 배포: firebase deploy --only firestore:rules
+// (Firebase CLI 미설치 시: Firebase Console > Firestore Database > 규칙 탭에 이 내용을 붙여넣기)
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- 공통 헬퍼 ----------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // update 요청에서 실제로 바뀌는 필드들이 allowedFields 안에만 포함되는지 검사.
+    // "좋아요 카운트만 바꿀 수 있게" 같은 필드 단위 권한 제어에 사용.
+    function onlyChangedFields(allowedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
+    }
+
+    // 카운트 필드(likeCount/saveCount/followerCount 등)가 이번 요청에서 그대로거나 ±1만큼만
+    // 바뀌었는지 검사. onlyChangedFields와 함께 써서 "다른 사람 좋아요 수를 999로 조작" 같은
+    // 공격을 막습니다 — 좋아요/저장/팔로우 토글은 항상 한 번에 1씩만 증감해야 정상이기 때문입니다.
+    function isUnchangedOrStep1(field) {
+      return request.resource.data[field] == resource.data[field]
+        || request.resource.data[field] == resource.data[field] + 1
+        || request.resource.data[field] == resource.data[field] - 1;
+    }
+
+    // ---------- users/{uid} ----------
+    // 프로필은 피드/코스에 작성자 이름·아바타를 보여줘야 하므로 공개 읽기.
+    // 쓰기는 본인만, uid/createdAt 위조 방지.
+    match /users/{uid} {
+      allow read: if true;
+
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.keys().hasAll(['uid', 'displayName', 'email'])
+        && request.resource.data.followerCount == 0
+        && request.resource.data.followingCount == 0
+        && request.resource.data.courseCount == 0;
+
+      // uid는 절대 변경 불가. 팔로우 시 상대방의 followerCount를 ±1 만큼 바꿔야 하므로,
+      // 본인이 아니어도 followerCount 필드만, 그것도 ±1씩만 변경하는 요청은 허용합니다
+      // (courses/posts의 likeCount 패턴과 동일). 그 외 필드는 본인만 수정 가능합니다.
+      allow update: if (isOwner(uid) && request.resource.data.uid == uid)
+        || (isSignedIn()
+            && onlyChangedFields(['followerCount'])
+            && isUnchangedOrStep1('followerCount'));
+
+      allow delete: if false; // 계정 삭제는 별도 플로우(Auth 삭제와 함께)에서 처리
+    }
+
+    // ---------- courses/{courseId} ----------
+    match /courses/{courseId} {
+      allow read: if resource.data.isPublic == true
+        || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.saveCount == 0;
+
+      // 작성자 본인: 전체 필드 수정 가능
+      // 작성자가 아닌 로그인 사용자: likeCount/saveCount/updatedAt 만, 그것도 좋아요/저장
+      // 토글 한 번에 ±1씩만 수정 가능 (임의의 숫자로 조작하는 것을 방지).
+      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid)
+        || (isSignedIn()
+            && onlyChangedFields(['likeCount', 'saveCount', 'updatedAt'])
+            && isUnchangedOrStep1('likeCount')
+            && isUnchangedOrStep1('saveCount'));
+
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- posts/{postId} ----------
+    match /posts/{postId} {
+      allow read: if true; // 피드는 공개
+
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.saveCount == 0
+        && request.resource.data.commentCount == 0;
+
+      allow update: if (isSignedIn() && resource.data.authorId == request.auth.uid)
+        || (isSignedIn()
+            && onlyChangedFields(['likeCount', 'saveCount', 'commentCount', 'updatedAt'])
+            && isUnchangedOrStep1('likeCount')
+            && isUnchangedOrStep1('saveCount')
+            && isUnchangedOrStep1('commentCount'));
+
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- comments/{commentId} ----------
+    match /comments/{commentId} {
+      allow read: if true;
+
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+
+      allow update, delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- likes/{postId_uid}, saves/{postId_uid} ----------
+    // 문서 ID를 반드시 "{postId}_{uid}" 형태로 강제 → 같은 사용자가 같은 게시물에
+    // 두 번 좋아요 문서를 만들 수 없음 (구조적으로 중복 방지).
+    match /likes/{likeId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && likeId == request.resource.data.postId + '_' + request.auth.uid;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false; // 좋아요는 생성/삭제만, 수정 없음
+    }
+
+    match /saves/{saveId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && saveId == request.resource.data.postId + '_' + request.auth.uid;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---------- courseLikes/{courseId_uid}, courseSaves/{courseId_uid} ----------
+    // 코스 좋아요/저장. likes/saves와 동일한 패턴이지만 courseId 기준.
+    match /courseLikes/{likeId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && likeId == request.resource.data.courseId + '_' + request.auth.uid;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /courseSaves/{saveId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && saveId == request.resource.data.courseId + '_' + request.auth.uid;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---------- travelLogs/{logId} ----------
+    // 여행 기록(TravelNavigator 완료 시 자동 생성)은 개인 기록이므로 작성자 본인만 읽고 쓸 수 있습니다.
+    match /travelLogs/{logId} {
+      allow read: if isSignedIn() && resource.data.authorId == request.auth.uid;
+
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+
+      allow update, delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- notifications/{notificationId} ----------
+    // 좋아요/댓글/팔로우 등 행동이 발생하면 생성되는 알림.
+    // - 받는 사람 본인만 읽을 수 있음
+    // - 생성은 로그인한 누구나 가능하지만(다른 사람에게 알림을 보내야 하므로),
+    //   actorId는 반드시 요청자 자신이어야 함(다른 사람인 척 알림을 만들 수 없도록).
+    // - 읽음 처리(isRead)만 받는 사람 본인이 수정 가능.
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+
+      allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid
+        && onlyChangedFields(['isRead']);
+
+      allow delete: if false;
+    }
+
+    // ---------- follows/{followerId_followingId} ----------
+    // 팔로우 관계. 문서 ID를 "{followerId}_{followingId}" 형태로 강제해 중복 팔로우를 구조적으로 방지합니다.
+    // 목록(팔로워/팔로잉)을 다른 사용자도 볼 수 있어야 하므로 읽기는 공개, 생성/삭제만 본인으로 제한합니다.
+    match /follows/{followId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followingId != request.auth.uid
+        && followId == request.auth.uid + '_' + request.resource.data.followingId;
+
+      allow delete: if isSignedIn() && resource.data.followerId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---------- savedPlaces/{placeId_uid} ----------
+    // 장소 상세 화면에서 장소 하나만 저장하는 기능. 본인 저장 목록이므로 비공개.
+    match /savedPlaces/{saveId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && saveId == request.resource.data.place.id + '_' + request.auth.uid;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // 위에서 명시하지 않은 나머지 모든 경로는 기본 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

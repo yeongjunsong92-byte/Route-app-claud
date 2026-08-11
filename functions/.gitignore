@@ -1,0 +1,12 @@
+# 빌드 산출물
+lib/
+node_modules/
+
+# 로컬 환경변수 파일 — 절대 커밋하지 않습니다 (실제 키는 여기 두지 않고
+# `firebase functions:secrets:set ANTHROPIC_API_KEY`로 Secret Manager에 등록하세요)
+.env
+.env.*
+!.env.example
+
+.runtimeconfig.json
+firebase-debug.log
