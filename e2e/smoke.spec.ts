@@ -11,9 +11,7 @@
 // 이 테스트는 실제 Firestore 데이터를 생성/삭제하지 않습니다 — 조회/이동만 검증합니다.
 
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
-
-const E2E_EMAIL = process.env.E2E_TEST_EMAIL;
-const E2E_PASSWORD = process.env.E2E_TEST_PASSWORD;
+import { getE2ECredentials } from "./env.ts";
 
 // 개발 환경에서 흔히 발생하지만 "심각한 런타임 에러"로 취급하면 안 되는 메시지 패턴.
 // (예: Firestore long-polling 폴백 경고, 소스맵 404, 브라우저 확장 프로그램 관련 로그 등)
@@ -114,15 +112,16 @@ test.describe("Route 스모크 테스트", () => {
   });
 
   test("2. 이메일/비밀번호 로그인 → Home 화면 진입", async ({ page }) => {
-    test.skip(
-      !E2E_EMAIL || !E2E_PASSWORD,
-      "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다."
-    );
+    const credentials = getE2ECredentials();
+    if (!credentials) {
+      test.skip(true, "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다.");
+      return;
+    }
 
     const consoleErrors = collectSeriousConsoleErrors(page);
 
     // loginAndWaitForHome 내부에서 이미 "홈" 탭 활성화 + Home 화면 콘텐츠 렌더링까지 확인합니다.
-    await loginAndWaitForHome(page, E2E_EMAIL!, E2E_PASSWORD!);
+    await loginAndWaitForHome(page, credentials.email, credentials.password);
 
     expect(consoleErrors, `로그인 플로우 중 콘솔 런타임 에러 발생:\n${consoleErrors.join("\n")}`).toEqual(
       []
@@ -130,14 +129,15 @@ test.describe("Route 스모크 테스트", () => {
   });
 
   test("3. Home → Feed → 마이(Profile) 순서로 주요 화면 렌더링 확인", async ({ page }) => {
-    test.skip(
-      !E2E_EMAIL || !E2E_PASSWORD,
-      "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다."
-    );
+    const credentials = getE2ECredentials();
+    if (!credentials) {
+      test.skip(true, "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다.");
+      return;
+    }
 
     const consoleErrors = collectSeriousConsoleErrors(page);
 
-    await loginAndWaitForHome(page, E2E_EMAIL!, E2E_PASSWORD!);
+    await loginAndWaitForHome(page, credentials.email, credentials.password);
 
     // Home -> Feed
     await page.getByRole("button", { name: "피드" }).click();
@@ -165,14 +165,15 @@ test.describe("Route 스모크 테스트", () => {
   });
 
   test("4. Home → Feed → 코스 상세 화면 진입 확인", async ({ page }) => {
-    test.skip(
-      !E2E_EMAIL || !E2E_PASSWORD,
-      "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다."
-    );
+    const credentials = getE2ECredentials();
+    if (!credentials) {
+      test.skip(true, "E2E_TEST_EMAIL / E2E_TEST_PASSWORD 환경변수가 설정되어 있지 않아 skip합니다.");
+      return;
+    }
 
     const consoleErrors = collectSeriousConsoleErrors(page);
 
-    await loginAndWaitForHome(page, E2E_EMAIL!, E2E_PASSWORD!);
+    await loginAndWaitForHome(page, credentials.email, credentials.password);
 
     await page.getByRole("button", { name: "피드" }).click();
     await expect(page.getByRole("button", { name: "추천", exact: true })).toBeVisible({
