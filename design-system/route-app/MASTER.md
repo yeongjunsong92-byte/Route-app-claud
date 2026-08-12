@@ -7,8 +7,9 @@
 ---
 
 **Project:** Route App
-**Generated:** 2026-08-12 12:42:33
+**Generated:** 2026-08-12 12:45:16
 **Category:** Road Trip Planner
+**Design Dials:** Motion 8/10 (Complex) | Density 6/10 (Standard)
 
 ---
 
@@ -18,32 +19,34 @@
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
-| Primary | `#E11D48` | `--color-primary` |
+| Primary | `#1E293B` | `--color-primary` |
 | On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#FB7185` | `--color-secondary` |
+| Secondary | `#334155` | `--color-secondary` |
 | Accent/CTA | `#2563EB` | `--color-accent` |
-| Background | `#FFF1F2` | `--color-background` |
-| Foreground | `#881337` | `--color-foreground` |
-| Muted | `#F0ECF2` | `--color-muted` |
-| Border | `#FECDD3` | `--color-border` |
+| Background | `#0F172A` | `--color-background` |
+| Foreground | `#FFFFFF` | `--color-foreground` |
+| Muted | `#10182B` | `--color-muted` |
+| Border | `rgba(255,255,255,0.08)` | `--color-border` |
 | Destructive | `#DC2626` | `--color-destructive` |
-| Ring | `#E11D48` | `--color-ring` |
+| Ring | `#1E293B` | `--color-ring` |
 
-**Color Notes:** Vibrant rose + engagement blue
+**Color Notes:** Map dark + route blue
 
 ### Typography
 
-- **Heading Font:** Plus Jakarta Sans
-- **Body Font:** Plus Jakarta Sans
-- **Mood:** neumorphism, soft ui, monochromatic, cool grey, minimal, physical, depth, ceramic, system font, utility
-- **Google Fonts:** [Plus Jakarta Sans + Plus Jakarta Sans](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,700;1,400)
+- **Heading Font:** Outfit
+- **Body Font:** Outfit
+- **Mood:** bauhaus, geometric, constructivist, bold, uppercase, architectural, mechanical, poster, tactile
+- **Google Fonts:** [Outfit + Outfit](https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap)
 
 **CSS Import:**
 ```css
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap');
 ```
 
 ### Spacing Variables
+
+*Density: 6/10 — Standard*
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -90,8 +93,8 @@
 /* Secondary Button */
 .btn-secondary {
   background: transparent;
-  color: #E11D48;
-  border: 2px solid #E11D48;
+  color: #1E293B;
+  border: 2px solid #1E293B;
   padding: 12px 24px;
   border-radius: 8px;
   font-weight: 600;
@@ -104,7 +107,7 @@
 
 ```css
 .card {
-  background: #FFF1F2;
+  background: #0F172A;
   border-radius: 12px;
   padding: 24px;
   box-shadow: var(--shadow-md);
@@ -130,9 +133,9 @@
 }
 
 .input:focus {
-  border-color: #E11D48;
+  border-color: #1E293B;
   outline: none;
-  box-shadow: 0 0 0 3px #E11D4820;
+  box-shadow: 0 0 0 3px #1E293B20;
 }
 ```
 
@@ -168,11 +171,27 @@
 
 ### Page Pattern
 
-**Pattern Name:** App Store Style Landing
+**Pattern Name:** Horizontal Scroll Journey
 
-- **Conversion Strategy:** Show real screenshots. Include ratings (4.5+ stars). QR code for mobile. Platform-specific CTAs.
-- **CTA Placement:** Download buttons prominent (App Store + Play Store) throughout
-- **Section Order:** 1. Hero with device mockup, 2. Screenshots carousel, 3. Features with icons, 4. Reviews/ratings, 5. Download CTAs
+- **Conversion Strategy:** Immersive product discovery. High engagement. Keep navigation visible.
+- **CTA Placement:** Floating Sticky CTA or End of Horizontal Track
+- **Section Order:** 1. Intro (Vertical), 2. The Journey (Horizontal Track), 3. Detail Reveal, 4. Vertical Footer
+
+---
+
+## Motion
+
+**Page Transition** (Complex) — Trigger: route change | Duration: 500-800ms | Easing: `expo.inOut`
+
+```js
+const state = Flip.getState('.hero-image'); navigate(); Flip.from(state, { duration: 0.6, ease: 'expo.inOut', absolute: true, zIndex: 100 });
+```
+
+**Framework notes:** Requires the GSAP Flip plugin; the 'from' and 'to' route must render the same element with a shared data-flip-id
+
+- ✅ Verify the shared element exists in both DOM states before calling Flip.from to avoid a silent no-op
+- ❌ Don't use shared-element transitions across more than one element pair per navigation; compounding Flips are hard to time correctly
+- ⚡ Flip recalculates layout (FLIP technique) so test on low-end devices for jank
 
 ---
 
