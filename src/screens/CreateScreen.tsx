@@ -34,6 +34,7 @@ import type { Course, CourseStop, Place } from "../lib/types";
 
 interface CreateScreenProps {
   draftPlaces?: Place[]; // 지도 화면에서 담아온 장소
+  onViewCourses?: () => void;
 }
 
 /**
@@ -55,7 +56,7 @@ function canonicalizeStops(stops: CourseStop[]): CourseStop[] {
   return flattened.map((stop, i) => ({ ...stop, order: i + 1 }));
 }
 
-export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
+export default function CreateScreen({ draftPlaces = [], onViewCourses }: CreateScreenProps) {
   const { user, profile } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -264,11 +265,24 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
   return (
     <div className="pb-28">
       <header className="px-5 pt-6">
-        <h1 className="text-xl font-bold text-gray-800">코스 만들기</h1>
-        <p className="mt-1 text-sm text-gray-600">나만의 여행 코스를 기록하고 공유해보세요</p>
+        <p className="text-xs font-medium text-secondary">CREATE ROUTE</p>
+        <h1 className="mt-1 text-xl font-bold text-gray-800">내 코스 만들기</h1>
+        <p className="mt-1 text-sm leading-5 text-gray-600">
+          장소를 담고, 일정 순서를 확인한 뒤 나만의 Route로 저장하세요.
+        </p>
       </header>
 
       <section className="mt-5 space-y-4 px-5">
+        <div className="rounded-2xl border border-primary/30 bg-primary-light p-3.5">
+          <p className="text-[11px] font-semibold text-primary-dark">CREATE FLOW</p>
+          <p className="mt-1 text-sm font-semibold text-gray-800">장소 추가 → 코스 정보 → 일정 확인 → 저장</p>
+          <p className="mt-1 text-xs text-gray-600">지도에서 담은 장소는 아래 일정에 자동으로 반영됩니다.</p>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-secondary">STEP 1 · 코스 정보</p>
+          <h2 className="mt-1 text-base font-semibold text-gray-800">여행의 기본 정보를 입력하세요</h2>
+        </div>
         <button
           onClick={() => coverInputRef.current?.click()}
           disabled={uploadingCover}
@@ -371,6 +385,10 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
         <p className="text-[11px] text-gray-600">
           날짜를 입력하면 홈 화면에 D-day 배너로 표시돼요. 안 정해졌다면 비워둬도 괜찮아요.
         </p>
+        <div className="flex items-center justify-between rounded-xl bg-paper px-3 py-2.5 text-xs text-gray-600">
+          <span>현재 일정</span>
+          <span className="font-semibold text-primary-dark">{durationDays}일 · 장소 {stops.length}곳</span>
+        </div>
       </section>
 
       {/* 일정 보기 / 지도 보기 토글 */}
@@ -412,7 +430,8 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
 
       {/* DAY 탭: 장소를 추가할 때 어느 DAY에 들어갈지 선택합니다 */}
       <div className="mt-5 px-5">
-        <h2 className="text-base font-semibold text-gray-800">일정</h2>
+        <p className="text-xs font-semibold text-secondary">STEP 2 · 일정 확인</p>
+        <h2 className="mt-1 text-base font-semibold text-gray-800">장소 순서와 이동 흐름을 확인하세요</h2>
         <div className="mt-2 flex flex-wrap gap-2">
           {Array.from({ length: durationDays }, (_, i) => i + 1).map((day) => {
             const count = stops.filter((s) => (s.day ?? 1) === day).length;
@@ -527,7 +546,8 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
       <div className="route-divider mx-5 my-6" />
 
       <section className="px-5">
-        <h2 className="text-base font-semibold text-gray-800">장소 추가하기</h2>
+        <p className="text-xs font-semibold text-secondary">STEP 3 · 장소 추가</p>
+        <h2 className="mt-1 text-base font-semibold text-gray-800">장소를 더 담아보세요</h2>
         <p className="mt-1 text-xs text-gray-600">
           지도 탭에서 검색해 담은 장소가 자동으로 이어붙어요. 여기서 직접 검색해서 추가할 수도 있어요.
         </p>
@@ -583,7 +603,7 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
           disabled={!canPublish}
           className="tap-scale flex h-12 w-full items-center justify-center rounded-full bg-primary text-sm font-semibold text-white disabled:opacity-40"
         >
-          {publishing ? "발행 중..." : "코스 발행하기"}
+          {publishing ? "저장 중..." : "코스 저장하기"}
         </button>
       </div>
 
@@ -594,6 +614,14 @@ export default function CreateScreen({ draftPlaces = [] }: CreateScreenProps) {
           authorName={profile?.displayName ?? user.displayName ?? "여행자"}
           authorAvatarUrl={profile?.avatarUrl ?? user.photoURL ?? undefined}
           onClose={resetForm}
+          onViewCourses={() => {
+            if (onViewCourses) {
+              setCompletedCourse(null);
+              onViewCourses();
+              return;
+            }
+            resetForm();
+          }}
         />
       )}
     </div>

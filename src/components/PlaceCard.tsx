@@ -1,18 +1,18 @@
 // src/components/PlaceCard.tsx
-// 장소 카드 — 시안 디자인 시스템 적용
-// variant: "row"(기본, 지도 바텀시트/AI추천 리스트) | "compact"(홈 화면 가로 스크롤용 미니 카드)
-// addStyle: "icon"(원형 +/체크 버튼) | "pill"("추가" 텍스트 버튼, AI 추천 리스트용)
+// 장소 카드 — row는 Map 등에서 optional 선택 콜백을 받을 수 있고, compact는 Home용 미니 카드입니다.
 
-import { Star, Plus, Check } from "lucide-react";
+import { Check, Plus, Star } from "lucide-react";
 import { CATEGORY_META } from "../lib/types";
 import type { Place } from "../lib/types";
 
 interface PlaceCardProps {
   place: Place;
   onAdd?: (place: Place) => void;
+  onSelect?: (place: Place) => void;
   added?: boolean;
+  selected?: boolean;
   order?: number;
-  distanceLabel?: string; // 예: "260m", "도보 5분"
+  distanceLabel?: string;
   variant?: "row" | "compact";
   addStyle?: "icon" | "pill";
 }
@@ -20,13 +20,16 @@ interface PlaceCardProps {
 export default function PlaceCard({
   place,
   onAdd,
+  onSelect,
   added,
+  selected = false,
   order,
   distanceLabel,
   variant = "row",
   addStyle = "icon",
 }: PlaceCardProps) {
   const meta = CATEGORY_META[place.category];
+  const isSelectable = Boolean(onSelect);
 
   if (variant === "compact") {
     return (
@@ -52,8 +55,28 @@ export default function PlaceCard({
     );
   }
 
+  const handleSelect = () => onSelect?.(place);
+
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-gray-300 bg-white p-2.5">
+    <div
+      className={`flex items-center gap-3 rounded-2xl border bg-white p-2.5 transition-shadow ${
+        selected ? "border-primary-dark ring-2 ring-primary/30" : "border-gray-300"
+      } ${isSelectable ? "cursor-pointer shadow-card focus:outline-none" : ""}`}
+      onClick={isSelectable ? handleSelect : undefined}
+      onKeyDown={
+        isSelectable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleSelect();
+              }
+            }
+          : undefined
+      }
+      role={isSelectable ? "button" : undefined}
+      tabIndex={isSelectable ? 0 : undefined}
+      aria-pressed={isSelectable ? selected : undefined}
+    >
       {order !== undefined && (
         <div
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -87,19 +110,25 @@ export default function PlaceCard({
       {onAdd &&
         (addStyle === "pill" ? (
           <button
-            onClick={() => onAdd(place)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAdd(place);
+            }}
             className={`tap-scale shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-              added ? "bg-primary-light text-primary" : "bg-primary text-white"
+              added ? "bg-primary-light text-primary-dark" : "bg-primary text-white"
             }`}
           >
             {added ? "추가됨" : "추가"}
           </button>
         ) : (
           <button
-            onClick={() => onAdd(place)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAdd(place);
+            }}
             aria-label={added ? "코스에서 제거" : "코스에 추가"}
             className={`tap-scale flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-              added ? "bg-primary text-white" : "border border-gray-300 text-primary"
+              added ? "bg-primary text-white" : "border border-gray-300 text-primary-dark"
             }`}
           >
             {added ? <Check size={16} /> : <Plus size={16} />}

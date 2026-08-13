@@ -1,9 +1,9 @@
 // src/screens/MapScreen.tsx
-// 지도 화면: 실제 Google Maps 기반 장소 검색 → 마커 표시 → 장소 선택 → 코스에 추가 → 경로 표시
+// 지도 화면: 기존 Google Maps 검색·마커·장소 선택·코스 추가 로직을 유지하며 MVP 탐색 흐름을 제공합니다.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoadScript } from "@react-google-maps/api";
-import { X, Plus, Check, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Loader2, MapPinned, Plus, RefreshCw, Search, X } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import PlaceMap from "../components/PlaceMap";
 import PlaceCard from "../components/PlaceCard";
@@ -31,6 +31,7 @@ export default function MapScreen({
   onToggleDraftPlace,
   onGoToCreate,
 }: MapScreenProps) {
+  // Google Maps 로딩 설정은 기존과 동일하게 유지합니다.
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
     libraries: GOOGLE_MAPS_LIBRARIES,
@@ -48,6 +49,7 @@ export default function MapScreen({
   const [coursesLoading, setCoursesLoading] = useState(true);
   const [coursesError, setCoursesError] = useState("");
 
+  // 기존 Firestore 지역 코스 조회를 유지합니다.
   const loadCoursesInRegion = useCallback(async () => {
     setCoursesLoading(true);
     setCoursesError("");
@@ -66,6 +68,7 @@ export default function MapScreen({
     loadCoursesInRegion();
   }, [loadCoursesInRegion]);
 
+  // Google Places Text Search와 Place 변환 방식은 변경하지 않습니다.
   const handleSearch = useCallback(
     (keyword: string) => {
       if (!keyword || !isLoaded) return;
@@ -73,7 +76,6 @@ export default function MapScreen({
       setSearchError("");
       setSelectedPlace(null);
 
-      // PlacesService는 지도 인스턴스 없이도 더미 div로 동작합니다 (Text Search API).
       const service = new google.maps.places.PlacesService(document.createElement("div"));
       service.textSearch(
         {
@@ -85,8 +87,8 @@ export default function MapScreen({
           setSearching(false);
           if (status === google.maps.places.PlacesServiceStatus.OK && results?.length) {
             const mapped = results
-              .map((r) => toAppPlace(r, region))
-              .filter((p): p is Place => p !== null);
+              .map((result) => toAppPlace(result, region))
+              .filter((place): place is Place => place !== null);
             setSearchResults(mapped);
           } else {
             setSearchResults([]);
@@ -99,15 +101,23 @@ export default function MapScreen({
   );
 
   const visibleMarkers = searchResults.length > 0 ? searchResults : draftPlaces;
-  const isDraft = (place: Place) => draftPlaces.some((p) => p.id === place.id);
+  const isDraft = (place: Place) => draftPlaces.some((item) => item.id === place.id);
 
   return (
-    <div className="pb-24">
+    <div className="pb-28">
       <header className="px-5 pt-6">
-        <h1 className="text-xl font-bold text-gray-800">지도로 찾기</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          장소를 검색하고 마음에 드는 곳을 코스에 담아보세요
-        </p>
+        <p className="text-xs font-medium text-secondary">MAP EXPLORE</p>
+        <div className="mt-1 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">지도로 장소 찾기</h1>
+            <p className="mt-1 text-sm leading-5 text-gray-600">
+              장소를 선택하고 나만의 Route에 담아보세요.
+            </p>
+          </div>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary-light text-secondary shadow-card">
+            <MapPinned size={19} />
+          </span>
+        </div>
       </header>
 
       <div className="px-5 pt-4">
@@ -115,24 +125,37 @@ export default function MapScreen({
       </div>
 
       <div className="mt-3 flex gap-2 overflow-x-auto px-5 pb-1">
-        {REGIONS.map((r) => (
+        {REGIONS.map((item) => (
           <button
-            key={r}
+            key={item}
             onClick={() => {
-              setRegion(r);
+              setRegion(item);
               setSearchResults([]);
               setSelectedPlace(null);
             }}
             className={`tap-scale shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              region === r ? "bg-primary text-white" : "border border-gray-300 bg-white text-gray-600"
+              region === item
+                ? "bg-primary-dark text-white"
+                : "border border-gray-300 bg-white text-gray-600"
             }`}
           >
-            {r}
+            {item}
           </button>
         ))}
       </div>
 
-      <div className="px-5 pt-3">
+      <section className="px-5 pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+            <MapPinned size={14} className="text-secondary" />
+            지도를 움직이거나 마커를 선택하세요
+          </span>
+          {draftPlaces.length > 0 && (
+            <span className="rounded-full bg-primary-light px-2.5 py-1 text-[11px] font-semibold text-primary-dark">
+              담은 장소 {draftPlaces.length}
+            </span>
+          )}
+        </div>
         <PlaceMap
           places={visibleMarkers}
           selectedPlaceId={selectedPlace?.id}
@@ -140,40 +163,61 @@ export default function MapScreen({
           routeStops={draftPlaces.length >= 2 ? draftPlaces : undefined}
           center={selectedPlace ? { lat: selectedPlace.lat, lng: selectedPlace.lng } : mapCenter}
         />
-        {searching && <p className="mt-2 text-center text-xs text-gray-600">검색 중...</p>}
+        {searching && (
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-gray-600">
+            <Loader2 size={13} className="animate-spin" />
+            장소를 찾는 중...
+          </p>
+        )}
         {searchError && <p className="mt-2 text-center text-xs text-gray-600">{searchError}</p>}
-      </div>
+      </section>
 
-      {/* 선택된 장소 상세 카드 */}
       {selectedPlace && (
-        <div className="px-5 pt-3">
-          <div className="relative">
-            <PlaceCard
-              place={selectedPlace}
-              onAdd={onToggleDraftPlace}
-              added={isDraft(selectedPlace)}
-              addStyle="pill"
-            />
+        <section className="mx-5 mt-4 rounded-2xl border border-primary/40 bg-primary-light p-3 shadow-card">
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <div>
+              <p className="text-[11px] font-semibold text-primary-dark">STEP 2 · 선택한 장소</p>
+              <h2 className="mt-0.5 text-sm font-semibold text-gray-800">장소 정보를 확인하고 코스에 담으세요</h2>
+            </div>
             <button
               onClick={() => setSelectedPlace(null)}
               aria-label="선택 해제"
-              className="tap-scale absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-gray-800 text-white"
+              className="tap-scale flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-card"
             >
-              <X size={12} />
+              <X size={14} />
             </button>
           </div>
-        </div>
+          <PlaceCard
+            place={selectedPlace}
+            onAdd={onToggleDraftPlace}
+            added={isDraft(selectedPlace)}
+            addStyle="pill"
+          />
+          <p className="mt-2 px-1 text-[11px] leading-4 text-gray-600">
+            {isDraft(selectedPlace)
+              ? "코스에 담겼어요. 아래 버튼에서 일정 만들기로 이동할 수 있어요."
+              : "‘추가’ 버튼을 누르면 이 장소가 코스 초안에 담겨요."}
+          </p>
+        </section>
       )}
 
-      {/* 검색 결과 리스트 */}
       {searchResults.length > 0 && (
-        <section className="mt-4 px-5">
-          <h2 className="text-base font-semibold text-gray-800">검색 결과 {searchResults.length}곳</h2>
+        <section className="mt-6 px-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-secondary">SEARCH RESULTS</p>
+              <h2 className="mt-0.5 text-base font-semibold text-gray-800">검색 결과 {searchResults.length}곳</h2>
+            </div>
+            <Search size={18} className="text-gray-600" />
+          </div>
+          <p className="mt-2 text-xs text-gray-600">카드를 눌러 정보를 확인한 뒤, + 버튼으로 코스에 추가하세요.</p>
           <div className="mt-3 flex flex-col gap-2.5">
             {searchResults.map((place) => (
               <PlaceCard
                 key={place.id}
                 place={place}
+                onSelect={setSelectedPlace}
+                selected={selectedPlace?.id === place.id}
                 onAdd={onToggleDraftPlace}
                 added={isDraft(place)}
                 addStyle="icon"
@@ -183,28 +227,20 @@ export default function MapScreen({
         </section>
       )}
 
-      {/* 담은 장소 → 코스 만들기로 이동 */}
-      {draftPlaces.length > 0 && (
-        <div className="fixed bottom-16 left-1/2 w-full max-w-[480px] -translate-x-1/2 px-5 pb-3">
-          <button
-            onClick={onGoToCreate}
-            className="tap-scale flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-white shadow-[0_6px_16px_rgba(255,104,145,0.35)]"
-          >
-            <Check size={16} />
-            담은 장소 {draftPlaces.length}곳으로 코스 만들기
-            <ArrowRight size={16} />
-          </button>
-        </div>
-      )}
-
       {searchResults.length === 0 && (
-        <section className="mt-5 px-5">
-          <h2 className="text-base font-semibold text-gray-800">{region} 코스</h2>
+        <section className="mt-6 px-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-secondary">LOCAL ROUTES</p>
+              <h2 className="mt-0.5 text-base font-semibold text-gray-800">{region} 추천 코스</h2>
+            </div>
+            <ChevronRight size={18} className="text-gray-600" />
+          </div>
           <div className="mt-3 flex flex-col gap-2.5">
             {coursesLoading && (
               <div className="flex items-center gap-2 py-6 text-sm text-gray-600">
                 <Loader2 size={16} className="animate-spin" />
-                불러오는 중...
+                코스를 불러오는 중...
               </div>
             )}
 
@@ -213,7 +249,7 @@ export default function MapScreen({
                 <p className="text-sm text-gray-600">{coursesError}</p>
                 <button
                   onClick={loadCoursesInRegion}
-                  className="tap-scale flex items-center gap-1.5 rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary"
+                  className="tap-scale flex items-center gap-1.5 rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark"
                 >
                   <RefreshCw size={12} />
                   다시 시도
@@ -222,9 +258,7 @@ export default function MapScreen({
             )}
 
             {!coursesLoading && !coursesError && coursesInRegion.length === 0 && (
-              <p className="py-6 text-center text-sm text-gray-600">
-                아직 {region} 지역의 코스가 없어요.
-              </p>
+              <p className="py-6 text-center text-sm text-gray-600">아직 {region} 지역의 코스가 없어요.</p>
             )}
 
             {!coursesLoading &&
@@ -234,7 +268,7 @@ export default function MapScreen({
                   key={course.id}
                   course={course}
                   variant="horizontal"
-                  onClick={(c) => onOpenCourse(c.id)}
+                  onClick={(selectedCourse) => onOpenCourse(selectedCourse.id)}
                 />
               ))}
           </div>
@@ -242,18 +276,21 @@ export default function MapScreen({
       )}
 
       {draftPlaces.length > 0 && (
-        <section className="mt-5 px-5">
+        <section className="mt-6 px-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-800">담은 장소</h2>
+            <div>
+              <p className="text-xs font-medium text-secondary">MY ROUTE</p>
+              <h2 className="mt-0.5 text-base font-semibold text-gray-800">코스에 담은 장소</h2>
+            </div>
             <span className="text-xs text-gray-600">{draftPlaces.length}곳</span>
           </div>
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {draftPlaces.map((place, i) => (
+            {draftPlaces.map((place, index) => (
               <div
                 key={place.id}
-                className="tap-scale flex shrink-0 items-center gap-1.5 rounded-full border border-gray-300 bg-white py-1.5 pl-3 pr-1.5"
+                className="tap-scale flex shrink-0 items-center gap-1.5 rounded-full border border-gray-300 bg-white py-1.5 pl-3 pr-1.5 shadow-card"
               >
-                <span className="text-xs font-semibold text-primary">{i + 1}</span>
+                <span className="text-xs font-semibold text-primary-dark">{index + 1}</span>
                 <span className="max-w-[96px] truncate text-xs text-gray-800">{place.name}</span>
                 <button
                   onClick={() => onToggleDraftPlace(place)}
@@ -266,13 +303,26 @@ export default function MapScreen({
             ))}
             <button
               onClick={onGoToCreate}
-              className="tap-scale flex shrink-0 items-center gap-1 rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary"
+              className="tap-scale flex shrink-0 items-center gap-1 rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark"
             >
               <Plus size={12} />
               코스로 만들기
             </button>
           </div>
         </section>
+      )}
+
+      {draftPlaces.length > 0 && (
+        <div className="fixed bottom-[72px] left-1/2 z-30 w-full max-w-[480px] -translate-x-1/2 px-5 pb-3">
+          <button
+            onClick={onGoToCreate}
+            className="tap-scale flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary-dark text-sm font-semibold text-white shadow-[0_10px_22px_rgba(190,135,155,0.35)]"
+          >
+            <Check size={16} />
+            담은 장소 {draftPlaces.length}곳으로 코스 만들기
+            <ArrowRight size={16} />
+          </button>
+        </div>
       )}
     </div>
   );

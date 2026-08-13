@@ -7,21 +7,26 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    background: #F5F5F7;
   }
+
   body {
-    @apply bg-paper text-gray-800 font-sans antialiased;
+    @apply bg-paper font-sans text-gray-800 antialiased;
     overscroll-behavior-y: none;
   }
+
   #root {
-    @apply mx-auto min-h-screen max-w-[480px] bg-paper;
-    position: relative;
+    @apply relative mx-auto min-h-screen max-w-[480px] bg-paper;
   }
+
   * {
     -webkit-font-smoothing: antialiased;
   }
+
   ::-webkit-scrollbar {
     display: none;
   }
+
   html {
     scrollbar-width: none;
   }
@@ -30,11 +35,11 @@
 @layer components {
   /* Route 앱 시그니처: 점선 경로 모티프 */
   .route-divider {
-    @apply w-full h-px;
-    background-image: linear-gradient(to right, #e0e0e0 50%, transparent 0%);
+    @apply h-px w-full;
+    background-image: linear-gradient(to right, #e2e2e7 50%, transparent 0%);
     background-position: bottom;
-    background-size: 8px 1px;
     background-repeat: repeat-x;
+    background-size: 8px 1px;
   }
 
   .tap-scale {

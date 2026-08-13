@@ -5,20 +5,20 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#FF6891",
-          light: "#FFE8EF",
-          dark: "#E5527A",
+          DEFAULT: "#E6B7C7",
+          light: "#F8EDF1",
+          dark: "#BE879B",
         },
         secondary: {
-          DEFAULT: "#6BCCFF",
-          light: "#EAF7FF",
+          DEFAULT: "#6D9EEB",
+          light: "#EAF1FE",
         },
         gray: {
-          800: "#2B2B2B",
-          600: "#757575",
-          300: "#E0E0E0",
+          800: "#222222",
+          600: "#6B6B73",
+          300: "#E2E2E7",
         },
-        paper: "#FAFAFA",
+        paper: "#F5F5F7",
       },
       fontFamily: {
         sans: ["Pretendard", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
@@ -27,8 +27,8 @@ export default {
         xl2: "1.25rem",
       },
       boxShadow: {
-        card: "0 2px 12px rgba(43, 43, 43, 0.06)",
-        sheet: "0 -4px 24px rgba(43, 43, 43, 0.12)",
+        card: "0 8px 24px rgba(34, 34, 34, 0.06)",
+        sheet: "0 -8px 28px rgba(34, 34, 34, 0.10)",
       },
       keyframes: {
         "route-dash": {

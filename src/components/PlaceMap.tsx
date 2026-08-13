@@ -150,7 +150,7 @@ export default function PlaceMap({
         {userLocation && (
           <Marker
             position={userLocation}
-            icon={markerIcon("#6BCCFF", false)}
+            icon={markerIcon("#6D9EEB", false)}
             zIndex={1}
           />
         )}
@@ -167,7 +167,7 @@ export default function PlaceMap({
               key={place.id}
               position={{ lat: place.lat, lng: place.lng }}
               onClick={() => onSelectPlace?.(place)}
-              icon={markerIcon(isSelected ? "#FF6891" : meta.color, isSelected)}
+              icon={markerIcon(isSelected ? "#E6B7C7" : meta.color, isSelected)}
               label={
                 label
                   ? { text: label, color: "#FFFFFF", fontSize: "11px", fontWeight: "700" }
@@ -184,7 +184,7 @@ export default function PlaceMap({
             options={{
               suppressMarkers: true,
               polylineOptions: {
-                strokeColor: "#FF6891",
+                strokeColor: "#E6B7C7",
                 strokeOpacity: 0.9,
                 strokeWeight: 4,
               },

@@ -14,6 +14,7 @@ import {
   Bookmark,
   Share,
   Navigation2,
+  CalendarDays,
   Clock,
   Route as RouteIcon,
   Car,
@@ -71,6 +72,10 @@ const CATEGORY_ICON: Record<PlaceCategory, LucideIcon> = {
 
 type ViewMode = "schedule" | "map";
 
+// 공개·SNS·AI 확장 기능은 삭제하지 않고 1차 MVP 상세 화면에서만 숨깁니다.
+const LEGACY_SOCIAL_ACTIONS_ENABLED = false;
+const LEGACY_AI_RECOMMENDATIONS_ENABLED = false;
+
 function addDaysIso(iso: string, days: number): string {
   const d = new Date(iso);
   d.setDate(d.getDate() + days);
@@ -81,6 +86,13 @@ function formatDayDate(iso: string): string {
   const d = new Date(iso);
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
   return `${d.getMonth() + 1}.${d.getDate()}(${dayNames[d.getDay()]})`;
+}
+
+function formatCoursePeriod(course: Pick<Course, "startDate" | "endDate">): string {
+  if (!course.startDate) return "여행 날짜 미정";
+  const start = course.startDate.replaceAll("-", ".");
+  const end = (course.endDate ?? course.startDate).replaceAll("-", ".");
+  return start === end ? start : `${start} - ${end}`;
 }
 
 function estimateMinutes(stops: CourseStop[]): number {
@@ -107,7 +119,6 @@ export default function CourseDetailScreen({
   courseId,
   onClose,
   onStartTravel,
-  onOpenProfile,
   onOpenPlace,
 }: CourseDetailScreenProps) {
   const { user, profile } = useAuth();
@@ -203,7 +214,7 @@ export default function CourseDetailScreen({
 
   // "다음 장소 추천(AI)": 내 코스일 때만, 마지막 장소 주변 인기 장소를 불러옵니다.
   useEffect(() => {
-    if (!isLoaded || !course || !isOwner || course.stops.length === 0) return;
+    if (!LEGACY_AI_RECOMMENDATIONS_ENABLED || !isLoaded || !course || !isOwner || course.stops.length === 0) return;
     const lastPlace = course.stops[course.stops.length - 1]!.place;
     const excludeIds = new Set(course.stops.map((s) => s.place.id));
     setNearbyLoading(true);
@@ -304,16 +315,8 @@ export default function CourseDetailScreen({
         >
           <ArrowLeft size={16} className="text-gray-600" />
         </button>
-        <h1 className="max-w-[240px] truncate text-base font-bold text-gray-800">
-          {course?.title ?? "코스 상세"}
-        </h1>
-        <button
-          onClick={handleShare}
-          aria-label="공유"
-          className="tap-scale flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-card"
-        >
-          <Share size={16} className="text-gray-600" />
-        </button>
+        <p className="text-sm font-semibold text-gray-800">내 여행 Route</p>
+        <span className="h-9 w-9" aria-hidden="true" />
       </header>
 
       {loading && (
@@ -340,46 +343,55 @@ export default function CourseDetailScreen({
 
       {!loading && !error && course && (
         <>
-          <div className="mt-2 px-5">
-            <p className="text-xs font-medium text-secondary">
-              {course.region} · {course.durationDays}일 코스
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                onClick={() => onOpenProfile?.(course.authorId)}
-                disabled={!onOpenProfile}
-                className="tap-scale flex items-center gap-2 disabled:pointer-events-none"
-              >
+          <div className="mt-4 px-5">
+            <div className="overflow-hidden rounded-3xl border border-gray-300 bg-white shadow-card">
+              {course.coverImageUrl ? (
                 <img
-                  src={course.authorAvatarUrl}
-                  alt={course.authorName}
-                  className="h-6 w-6 rounded-full object-cover"
+                  src={course.coverImageUrl}
+                  alt={course.title}
+                  className="h-48 w-full object-cover"
                 />
-                <span className="text-xs text-gray-600">{course.authorName}</span>
-              </button>
+              ) : (
+                <div className="flex h-32 items-center justify-center bg-primary-light text-sm font-medium text-primary-dark">
+                  여행 Route
+                </div>
+              )}
+              <div className="p-4">
+                <p className="text-xs font-semibold text-secondary">
+                  {course.region} · {course.durationDays}일 일정
+                </p>
+                <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-800">{course.title}</h1>
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-600">
+                  <CalendarDays size={13} className="text-primary-dark" />
+                  {formatCoursePeriod(course)}
+                </p>
+                {course.description && (
+                  <p className="mt-3 text-sm leading-5 text-gray-600">{course.description}</p>
+                )}
+              </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-around rounded-2xl border border-gray-300 bg-white py-3">
+            <div className="mt-3 flex items-center justify-around rounded-2xl border border-gray-300 bg-white py-3 shadow-card">
               <div className="flex items-center gap-1 text-sm font-bold text-gray-800">
-                <RouteIcon size={13} className="text-primary" />총 {course.stops.length}곳
+                <RouteIcon size={13} className="text-primary-dark" />총 {course.stops.length}곳
               </div>
               <div className="h-full w-px bg-gray-300" />
               <div className="flex items-center gap-1 text-sm font-bold text-gray-800">
-                <Clock size={13} className="text-primary" />
+                <Clock size={13} className="text-primary-dark" />
                 {formatMinutes(totalMinutes)}
               </div>
               <div className="h-full w-px bg-gray-300" />
               <div className="flex items-center gap-1 text-sm font-bold text-gray-800">
-                <Navigation2 size={13} className="text-primary" />
+                <Navigation2 size={13} className="text-primary-dark" />
                 {totalDistanceKm.toFixed(1)}km
               </div>
             </div>
 
-            <div className="mt-4 flex h-10 items-center gap-0.5 rounded-full bg-primary-light p-1">
+            <div className="mt-4 flex h-11 items-center gap-0.5 rounded-full bg-primary-light p-1">
               <button
                 onClick={() => setViewMode("schedule")}
                 className={`tap-scale h-full flex-1 rounded-full text-sm font-semibold transition-colors ${
-                  viewMode === "schedule" ? "bg-primary text-white" : "text-primary"
+                  viewMode === "schedule" ? "bg-primary-dark text-white" : "text-primary-dark"
                 }`}
               >
                 일정 보기
@@ -387,7 +399,7 @@ export default function CourseDetailScreen({
               <button
                 onClick={() => setViewMode("map")}
                 className={`tap-scale h-full flex-1 rounded-full text-sm font-semibold transition-colors ${
-                  viewMode === "map" ? "bg-primary text-white" : "text-primary"
+                  viewMode === "map" ? "bg-primary-dark text-white" : "text-primary-dark"
                 }`}
               >
                 지도 보기
@@ -400,7 +412,7 @@ export default function CourseDetailScreen({
               {dayGroups.map(({ day, stops }) => (
                 <div key={day} className="mb-6">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-primary px-2 py-0.5 text-[11px] font-bold text-white">
+                    <span className="rounded-md bg-primary-dark px-2 py-0.5 text-[11px] font-bold text-white">
                       DAY {day}
                     </span>
                     {course.startDate && (
@@ -432,6 +444,9 @@ export default function CourseDetailScreen({
                             />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
+                                <span className="rounded-md bg-primary-light px-1.5 py-0.5 text-[10px] font-semibold text-primary-dark">
+                                  순서 {stop.order}
+                                </span>
                                 {stop.time && (
                                   <span className="text-[11px] font-semibold text-gray-600">
                                     {stop.time}
@@ -469,7 +484,7 @@ export default function CourseDetailScreen({
                 </div>
               ))}
 
-              {isOwner && (nearbyLoading || nearby.length > 0) && (
+              {LEGACY_AI_RECOMMENDATIONS_ENABLED && isOwner && (nearbyLoading || nearby.length > 0) && (
                 <div className="mt-2 rounded-2xl border border-primary/20 bg-primary-light p-4">
                   <div className="flex items-center gap-1.5">
                     <Sparkles size={14} className="text-primary" />
@@ -527,12 +542,14 @@ export default function CourseDetailScreen({
 
           {viewMode === "map" && (
             <div className="mt-5 px-5">
-              <div className="mb-2 flex justify-end gap-1.5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-gray-600">장소를 누르면 상세 위치를 확인할 수 있어요.</p>
+                <div className="flex gap-1.5">
                 <button
                   onClick={() => setTravelMode("DRIVING")}
                   className={`tap-scale flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${
                     travelMode === "DRIVING"
-                      ? "bg-primary text-white"
+                      ? "bg-primary-dark text-white"
                       : "border border-gray-300 bg-white text-gray-600"
                   }`}
                 >
@@ -543,13 +560,14 @@ export default function CourseDetailScreen({
                   onClick={() => setTravelMode("WALKING")}
                   className={`tap-scale flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${
                     travelMode === "WALKING"
-                      ? "bg-primary text-white"
+                      ? "bg-primary-dark text-white"
                       : "border border-gray-300 bg-white text-gray-600"
                   }`}
                 >
                   <Footprints size={12} />
                   도보
                 </button>
+                </div>
               </div>
               <PlaceMap
                 places={allPlaces}
@@ -564,40 +582,34 @@ export default function CourseDetailScreen({
       )}
 
       {!loading && !error && course && (
-        <div className="fixed bottom-0 left-1/2 z-[71] w-full max-w-[480px] -translate-x-1/2 bg-paper px-5 pb-6 pt-3 safe-bottom">
-          {shareToast && (
+        <div className="fixed bottom-0 left-1/2 z-[71] w-full max-w-[480px] -translate-x-1/2 border-t border-gray-300 bg-paper px-5 pb-6 pt-3 safe-bottom">
+          {LEGACY_SOCIAL_ACTIONS_ENABLED && shareToast && (
             <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gray-800/85 px-3 py-1.5 text-xs text-white">
               {shareToast}
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleToggleLike}
-              disabled={!user}
-              className="tap-scale flex h-11 w-11 items-center justify-center rounded-full border border-gray-300 bg-white disabled:opacity-40"
-              aria-label="좋아요"
-            >
-              <Heart size={20} className={liked ? "fill-primary text-primary" : "text-gray-800"} />
-            </button>
-            <button
-              onClick={handleToggleSave}
-              disabled={!user}
-              className="tap-scale flex h-11 w-11 items-center justify-center rounded-full border border-gray-300 bg-white disabled:opacity-40"
-              aria-label="저장"
-            >
-              <Bookmark size={20} className={saved ? "fill-primary text-primary" : "text-gray-800"} />
-            </button>
-            <button
-              onClick={() => {
-                onStartTravel?.(course.id);
-                onClose();
-              }}
-              className="tap-scale flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-white"
-            >
-              <Navigation2 size={16} />
-              코스 시작하기
-            </button>
-          </div>
+          {LEGACY_SOCIAL_ACTIONS_ENABLED && (
+            <div className="hidden">
+              <button onClick={handleShare} aria-label="공유"><Share size={1} /></button>
+              <button onClick={handleToggleLike} disabled={!user} aria-label="좋아요">
+                <Heart size={1} className={liked ? "fill-primary text-primary" : "text-gray-800"} />
+              </button>
+              <button onClick={handleToggleSave} disabled={!user} aria-label="저장">
+                <Bookmark size={1} className={saved ? "fill-primary text-primary" : "text-gray-800"} />
+              </button>
+            </div>
+          )}
+          <p className="mb-2 text-center text-xs text-gray-600">여행을 시작하면 다음 장소까지의 이동을 안내해드려요.</p>
+          <button
+            onClick={() => {
+              onStartTravel?.(course.id);
+              onClose();
+            }}
+            className="tap-scale flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary-dark text-sm font-semibold text-white"
+          >
+            <Navigation2 size={17} />
+            코스 시작하기
+          </button>
         </div>
       )}
     </div>

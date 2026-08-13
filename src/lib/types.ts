@@ -100,7 +100,7 @@ export interface UserProfile {
   createdAt: number;
 }
 
-export type BottomNavKey = "home" | "map" | "create" | "feed" | "mypage";
+export type BottomNavKey = "home" | "map" | "courses" | "mypage";
 
 // ---------- 알림(Notification) ----------
 export type NotificationType = "like" | "comment" | "follow" | "course" | "travel";
