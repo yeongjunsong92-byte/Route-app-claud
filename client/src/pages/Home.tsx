@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Bookmark,
@@ -7,6 +8,7 @@ import {
   ChevronRight,
   Clock3,
   Compass,
+  GripVertical,
   Heart,
   MapPin,
   MoreHorizontal,
@@ -96,6 +98,69 @@ function PlaceRow({ place, onClick, onSave }: { place: Place; onClick: () => voi
 
 function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
 
+type RouteStop = { name: string; lat: number; lng: number };
+
+function estimateRouteMinutes(stops: RouteStop[]) {
+  if (stops.length < 2) return 0;
+  let kilometers = 0;
+  for (let index = 1; index < stops.length; index += 1) {
+    const previous = stops[index - 1];
+    const current = stops[index];
+    const latitude = ((previous.lat + current.lat) / 2) * (Math.PI / 180);
+    const deltaLat = (current.lat - previous.lat) * 111;
+    const deltaLng = (current.lng - previous.lng) * 111 * Math.cos(latitude);
+    kilometers += Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng);
+  }
+  return Math.max(5, Math.round((kilometers / 25) * 60));
+}
+
+function formatMinutes(minutes: number) {
+  if (minutes < 60) return `약 ${minutes}분`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `약 ${hours}시간 ${remainder}분` : `약 ${hours}시간`;
+}
+
+function RouteMapFallback({ stops }: { stops: RouteStop[] }) {
+  return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}<div className="route-map-attribution">Route route preview</div></div>;
+}
+
+function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compact?: boolean }) {
+  const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [distance, setDistance] = useState("");
+  const [isRealRoute, setIsRealRoute] = useState(false);
+  const fallbackMinutes = useMemo(() => estimateRouteMinutes(stops), [stops]);
+  const handleMapReady = useCallback((map: google.maps.Map) => {
+    if (stops.length < 2 || !window.google?.maps) return;
+    rendererRef.current?.setMap(null);
+    const renderer = new google.maps.DirectionsRenderer({
+      map,
+      suppressMarkers: false,
+      polylineOptions: { strokeColor: "#6351dd", strokeOpacity: 0.9, strokeWeight: 4 },
+    });
+    rendererRef.current = renderer;
+    const service = new google.maps.DirectionsService();
+    service.route({
+      origin: { lat: stops[0].lat, lng: stops[0].lng },
+      destination: { lat: stops[stops.length - 1].lat, lng: stops[stops.length - 1].lng },
+      waypoints: stops.slice(1, -1).map((stop) => ({ location: { lat: stop.lat, lng: stop.lng }, stopover: true })),
+      travelMode: google.maps.TravelMode.DRIVING,
+      optimizeWaypoints: false,
+    }, (result, status) => {
+      if (status !== "OK" || !result?.routes[0]) return;
+      renderer.setDirections(result);
+      const legs = result.routes[0].legs || [];
+      setDuration(Math.round(legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0) / 60));
+      setDistance(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000 < 10 ? `${(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000).toFixed(1)}km` : `${Math.round(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000)}km`);
+      setIsRealRoute(true);
+    });
+  }, [stops]);
+  useEffect(() => () => rendererRef.current?.setMap(null), []);
+
+  return <div className={`route-course-route-wrap ${compact ? "compact" : ""}`}><div className="route-course-route-map"><MapView className="route-real-map" initialCenter={stops[0] ? { lat: stops[0].lat, lng: stops[0].lng } : undefined} initialZoom={13} onMapReady={handleMapReady} fallback={<RouteMapFallback stops={stops} />} /></div><div className="route-route-meta"><span><MapPin size={13} /> {stops.length}곳 연결</span><span><Clock3 size={13} /> {formatMinutes(duration || fallbackMinutes)}</span>{distance && <span>{distance}</span>}{!isRealRoute && <small>지도 연결 후 실제 경로로 계산됩니다.</small>}</div></div>;
+}
+
 export default function Home() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const savePlaceMutation = trpc.places.toggleSaved.useMutation();
@@ -118,6 +183,7 @@ export default function Home() {
   const [courseTimes, setCourseTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00", p4: "19:00" });
   const [courseCosts, setCourseCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000", p4: "0" });
   const [courseMemos, setCourseMemos] = useState<Record<string, string>>({});
+  const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
   const selectedCourseId = Number(selectedCourse.id);
   const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
@@ -129,6 +195,11 @@ export default function Home() {
     return matchesQuery && matchesFilter;
   }), [filter, query]);
   const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
+  const courseStops = useMemo<RouteStop[]>(() => coursePlaces.slice(0, 8).map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [coursePlaces]);
+  const selectedCourseStops = useMemo<RouteStop[]>(() => selectedCourse.items.map((item, index) => {
+    const fallback = mockPlaces.find((place) => place.name.includes(item.name) || item.name.includes(place.name)) || mockPlaces[index % mockPlaces.length];
+    return { name: item.name, lat: fallback.lat, lng: fallback.lng };
+  }), [selectedCourse.items]);
 
   useEffect(() => {
     const detail = selectedCourseQuery.data;
@@ -182,7 +253,16 @@ export default function Home() {
     } catch { toast.error("코스 수정 내용을 저장하지 못했습니다."); }
   };
 
-  const renderMap = (compact = false) => <div className={compact ? "route-map-box compact" : "route-map-box"}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} fallback={<MapFallback markers={filteredPlaces} />} /></div>;
+  const moveCoursePlace = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= coursePlaces.length || toIndex >= coursePlaces.length) return;
+    setCoursePlaces((items) => {
+      const next = [...items];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+  const renderMap = (compact = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} /><div className="route-map-box-fallback"><MapFallback markers={filteredPlaces} /></div></div>;
 
   const renderMapScreen = () => <div className="route-screen route-map-screen">
     <div className="route-map-search" onClick={() => setScreen("search")}><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="장소를 검색해보세요" /><ChevronRight size={14} /></div>
@@ -203,9 +283,9 @@ export default function Home() {
 
   const renderEditCourse = () => <div className="route-screen route-course-create"><ScreenHeader title="내 버전 코스" onBack={() => setScreen("my-courses")} right={<span>수정</span>} /><div className="route-create-step"><h2>코스 정보를 수정하세요</h2><p>장소 순서와 방문 시간, 예상 비용을 바꿀 수 있습니다.</p><label className="route-edit-label">코스 이름<Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} /></label><div className="route-edit-place-list"><h3>일정 장소 {coursePlaces.length}곳</h3>{coursePlaces.slice(0, 4).map((place, index) => <div className="route-edit-place-block" key={place.id}><div className="route-edit-place-row"><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span><div className="route-edit-place-actions"><button disabled={index === 0} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button disabled={index === coursePlaces.length - 1} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button></div></div><div className="route-edit-fields"><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label className="memo">메모<textarea value={courseMemos[place.id] || ""} onChange={(event) => setCourseMemos((current) => ({ ...current, [place.id]: event.target.value }))} placeholder="이 장소에 대한 메모" /></label></div></div>)}</div></div><div className="route-bottom-action"><button className="secondary" onClick={() => setScreen("my-courses")}>취소</button><button onClick={() => void saveEditedCourse()} disabled={updateCourseMutation.isPending}>저장하기</button></div></div>;
 
-  const renderCourseCreate = () => <div className="route-screen route-course-create"><ScreenHeader title="코스 만들기" onBack={() => courseStep > 1 ? setCourseStep(courseStep - 1) : setScreen("map")} right={<span>{courseStep}/4</span>} /><StepIndicator step={courseStep} />{courseStep === 1 && <div className="route-create-step route-create-name"><Compass size={34} className="route-step-icon" /><h2>코스 이름을 정해주세요</h2><Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} placeholder="서울 데이트 코스" /><small>예) 부산 1박 2일 여행, 제주 힐링 코스</small></div>}{courseStep === 2 && <div className="route-create-step"><h2>장소 추가하기</h2><p>지도에서 장소를 검색하거나 내 장소에서 추가해보세요.</p><div className="route-inline-search"><Search size={15} /><input placeholder="장소 검색" onChange={(event) => setQuery(event.target.value)} /></div>{renderMap(true)}<div className="route-added-places"><strong>추가한 장소 {coursePlaces.length}</strong>{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><b>{index + 1}</b><span>{place.name}<small>{place.address}</small></span><button onClick={() => setCoursePlaces((items) => items.filter((item) => item.id !== place.id))}>×</button></div>)}</div></div>}{courseStep === 3 && <div className="route-create-step"><h2>세부사항 설정하기</h2><p>각 장소의 시간, 예상 비용, 메모를 설정해보세요.</p>{coursePlaces.slice(0, 4).map((place, index) => <details key={place.id} open={index === 0} className="route-place-detail-accordion"><summary><b>{index + 1}</b>{place.name}<ChevronDown size={15} /></summary><div><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>메모<textarea placeholder="메모를 입력해보세요" /></label></div></details>)}</div>}{courseStep === 4 && <div className="route-create-step"><h2>코스 전체 확인</h2><p>코스의 전체 일정과 예상 비용을 확인하고 저장합니다.</p><div className="route-review-timeline">{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><time>{courseTimes[place.id] || "10:00"}<small>도착</small></time><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>1시간 · {(Number(courseCosts[place.id]) || 0).toLocaleString()}원</small></span></div>)}</div><div className="route-total-cost"><span>예상 총 비용</span><strong>{totalCost.toLocaleString()}원</strong></div></div>}<div className="route-bottom-action"><button className="secondary" disabled={courseStep === 1} onClick={() => setCourseStep((step) => Math.max(1, step - 1))}>이전</button><button onClick={() => courseStep < 4 ? setCourseStep((step) => step + 1) : void saveCourse()}>{courseStep === 4 ? "저장하기" : "다음"}</button></div></div>;
+  const renderCourseCreate = () => <div className="route-screen route-course-create"><ScreenHeader title="코스 만들기" onBack={() => courseStep > 1 ? setCourseStep(courseStep - 1) : setScreen("map")} right={<span>{courseStep}/4</span>} /><StepIndicator step={courseStep} />{courseStep === 1 && <div className="route-create-step route-create-name"><Compass size={34} className="route-step-icon" /><h2>코스 이름을 정해주세요</h2><Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} placeholder="서울 데이트 코스" /><small>예) 부산 1박 2일 여행, 제주 힐링 코스</small></div>}{courseStep === 2 && <div className="route-create-step"><h2>장소 추가하기</h2><p>지도에서 장소를 검색하거나 내 장소에서 추가해보세요.</p><div className="route-inline-search"><Search size={15} /><input placeholder="장소 검색" onChange={(event) => setQuery(event.target.value)} /></div>{renderMap(true)}<div className="route-added-places"><strong>추가한 장소 {coursePlaces.length}</strong>{coursePlaces.slice(0, 8).map((place, index) => <div key={place.id} className={`route-draggable-place ${draggedCourseIndex === index ? "is-dragging" : ""}`} draggable onDragStart={() => setDraggedCourseIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedCourseIndex !== null) moveCoursePlace(draggedCourseIndex, index); setDraggedCourseIndex(null); }} onDragEnd={() => setDraggedCourseIndex(null)}><GripVertical size={15} className="route-drag-handle" /><b>{index + 1}</b><span>{place.name}<small>{place.address}</small></span><button onClick={() => setCoursePlaces((items) => items.filter((item) => item.id !== place.id))}>×</button></div>)}</div></div>}{courseStep === 3 && <div className="route-create-step"><h2>세부사항 설정하기</h2><p>각 장소의 시간, 예상 비용, 메모를 설정해보세요.</p>{coursePlaces.slice(0, 4).map((place, index) => <details key={place.id} open={index === 0} className="route-place-detail-accordion"><summary><b>{index + 1}</b>{place.name}<ChevronDown size={15} /></summary><div><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>메모<textarea placeholder="메모를 입력해보세요" /></label></div></details>)}</div>}{courseStep === 4 && <div className="route-create-step"><h2>코스 전체 확인</h2><p>코스의 전체 일정과 예상 비용을 확인하고 저장합니다.</p><CourseRouteMap stops={courseStops} compact /><div className="route-review-timeline">{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><time>{courseTimes[place.id] || "10:00"}<small>도착</small></time><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>1시간 · {(Number(courseCosts[place.id]) || 0).toLocaleString()}원</small></span></div>)}</div><div className="route-total-cost"><span>예상 총 비용</span><strong>{totalCost.toLocaleString()}원</strong></div></div>}<div className="route-bottom-action"><button className="secondary" disabled={courseStep === 1} onClick={() => setCourseStep((step) => Math.max(1, step - 1))}>이전</button><button onClick={() => courseStep < 4 ? setCourseStep((step) => step + 1) : void saveCourse()}>{courseStep === 4 ? "저장하기" : "다음"}</button></div></div>;
 
-  const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={selectedCourse.title} onBack={() => setScreen("friends")} right={<button><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{selectedCourse.region} · {selectedCourse.days}일</span><h2>{selectedCourse.title}</h2><p>by {selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {selectedCourse.items.length}곳</span><span><Clock3 size={14} /> 1일 일정</span></div><div className="route-detail-timeline"><h3>코스 일정</h3>{selectedCourse.items.map((item, index) => <button key={item.name} onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{item.duration} · {item.cost.toLocaleString()}원</small></span></button>)}</div><div className="route-bottom-action single"><button onClick={() => { setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("course-create"); }}>내 코스로 저장</button></div></div>;
+  const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={selectedCourse.title} onBack={() => setScreen("friends")} right={<button><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{selectedCourse.region} · {selectedCourse.days}일</span><h2>{selectedCourse.title}</h2><p>by {selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {selectedCourse.items.length}곳</span><span><Clock3 size={14} /> 1일 일정</span></div><CourseRouteMap stops={selectedCourseStops} /><div className="route-detail-timeline"><h3>코스 일정</h3>{selectedCourse.items.map((item, index) => <button key={item.name} onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{item.duration} · {item.cost.toLocaleString()}원</small></span></button>)}</div><div className="route-bottom-action single"><button onClick={() => { setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("course-create"); }}>내 코스로 저장</button></div></div>;
 
   const renderFriends = () => <div className="route-screen route-friends"><div className="route-map-topbar"><div className="route-brand">친구·팔로우</div><button onClick={() => setScreen("user-search")}><Search size={18} /></button></div><div className="route-friends-search" onClick={() => setScreen("user-search")}><Search size={15} />사용자나 친구를 검색해보세요</div><h3>팔로잉</h3><div className="route-avatar-row">{["여행하는 지훈", "jane_park", "travel_ve", "summer", "june"].map((name, i) => <button key={name} onClick={() => setScreen("profile")}><img src={`https://i.pravatar.cc/100?img=${i + 12}`} alt="" /><span>{name}</span></button>)}</div><div className="route-friend-section-title"><h3>추천 여행자</h3><button onClick={() => setScreen("user-search")}>더보기 <ChevronRight size={13} /></button></div>{["여행하는 지훈", "여행의 아카이브", "오늘도 여행중"].map((name, i) => <button key={name} className="route-user-row" onClick={() => setScreen("profile")}><img src={`https://i.pravatar.cc/100?img=${i + 20}`} alt="" /><span><strong>{name}</strong><small>새로운 여행을 기록하는 사람</small></span><b>팔로우</b></button>)}<h3 className="route-recent-heading">최근 업데이트된 코스</h3><button className="route-large-course-card compact" onClick={() => { setSelectedCourse(publicCourse); setScreen("course-detail"); }}><img src={publicCourse.image} alt="" /><span><strong>{publicCourse.title}</strong><small>{publicCourse.author} · ♥ {publicCourse.likes}</small></span><ChevronRight size={16} /></button></div>;
 
@@ -232,5 +312,5 @@ export default function Home() {
   else if (screen === "public-courses") content = renderPublicCourses();
   else content = <div className="route-screen route-home"><ScreenHeader title="Route" right={<button><User size={18} /></button>} /><button className="route-home-hero" onClick={() => { setSelectedCourse(publicCourse); setScreen("course-detail"); }}><span>추천 코스</span><h2>제주 2박 3일<br />힐링 코스</h2><small>여행의 흐름을 그대로 따라가보세요.</small></button><h3>최근 저장한 장소</h3>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div>;
 
-  return <div className="route-app-shell"><div className="route-phone"><StatusBar />{content}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
+  return <div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
 }

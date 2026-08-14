@@ -6,34 +6,55 @@ import { cn } from "@/lib/utils";
 declare global {
   interface Window {
     google?: typeof google;
+    gm_authFailure?: () => void;
   }
 }
 
-const API_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
-const FORGE_BASE_URL = import.meta.env.VITE_FRONTEND_FORGE_API_URL || "https://forge.butterfly-effect.dev";
-const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
+const FRONTEND_MAP_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string | undefined;
+const MAPS_SCRIPT_PARAMS = new URLSearchParams({ origin: window.location.origin });
+if (FRONTEND_MAP_KEY) MAPS_SCRIPT_PARAMS.set("key", FRONTEND_MAP_KEY);
+const MAPS_SCRIPT_URL = `/api/maps/script?${MAPS_SCRIPT_PARAMS.toString()}`;
 let mapScriptPromise: Promise<void> | null = null;
+
+function waitForGoogleMaps(timeoutMs = 15000) {
+  return new Promise<void>((resolve, reject) => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (window.google?.maps) {
+        resolve();
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        reject(new Error("Google Maps namespace was not ready before timeout"));
+        return;
+      }
+      window.setTimeout(check, 50);
+    };
+    check();
+  });
+}
 
 function loadMapScript() {
   if (window.google?.maps) return Promise.resolve();
   if (mapScriptPromise) return mapScriptPromise;
 
   mapScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById("route-google-maps-script") as HTMLScriptElement | null;
+    if (existing) {
+      waitForGoogleMaps().then(resolve).catch(reject);
+      return;
+    }
     const script = document.createElement("script");
-    script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+    script.id = "route-google-maps-script";
+    script.src = MAPS_SCRIPT_URL;
     script.async = true;
-    script.crossOrigin = "anonymous";
-    script.onload = () => {
-      if (window.google?.maps) resolve();
-      else reject(new Error("Google Maps loaded without the maps namespace"));
-      script.remove();
-    };
-    script.onerror = () => {
-      mapScriptPromise = null;
-      script.remove();
-      reject(new Error("Failed to load Google Maps script"));
-    };
+    script.defer = true;
+    script.onload = () => waitForGoogleMaps().then(resolve).catch(reject);
+    script.onerror = () => reject(new Error("Google Maps same-origin proxy request failed"));
     document.head.appendChild(script);
+  }).catch((error) => {
+    mapScriptPromise = null;
+    throw error;
   });
 
   return mapScriptPromise;
@@ -56,20 +77,24 @@ export function MapView({
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
+  const onMapReadyRef = useRef(onMapReady);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [tilesLoaded, setTilesLoaded] = useState(false);
+
+  useEffect(() => {
+    onMapReadyRef.current = onMapReady;
+  }, [onMapReady]);
 
   useEffect(() => {
     let active = true;
     loadMapScript()
       .then(() => {
-        if (!active) return;
-        setStatus("ready");
+        if (active) setStatus("ready");
       })
       .catch((error) => {
         console.warn("[Route Map] Google Maps unavailable; using fallback map.", error);
         if (active) setStatus("error");
       });
-
     return () => {
       active = false;
     };
@@ -77,17 +102,32 @@ export function MapView({
 
   useEffect(() => {
     if (status !== "ready" || !mapContainer.current || !window.google?.maps) return;
-    map.current = new window.google.maps.Map(mapContainer.current, {
-      zoom: initialZoom,
-      center: initialCenter,
-      mapTypeControl: false,
-      fullscreenControl: false,
-      zoomControl: false,
-      streetViewControl: false,
-      mapId: "DEMO_MAP_ID",
-    });
-    onMapReady?.(map.current);
-  }, [initialCenter, initialZoom, onMapReady, status]);
+    try {
+      const mapInstance = new window.google.maps.Map(mapContainer.current, {
+        zoom: initialZoom,
+        center: initialCenter,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        zoomControl: false,
+        streetViewControl: false,
+      });
+      map.current = mapInstance;
+      const checkForTiles = () => {
+        const hasGoogleTile = Boolean(mapContainer.current?.querySelector('img[src*="/maps/vt"], img[src*="maps.googleapis.com/maps/vt"], img[src*="mt0.google.com/vt"], img[src*="mt1.google.com/vt"]'));
+        if (hasGoogleTile) setTilesLoaded(true);
+      };
+      const tilesListener = mapInstance.addListener("tilesloaded", () => window.setTimeout(checkForTiles, 180));
+      const tileCheckInterval = window.setInterval(checkForTiles, 400);
+      onMapReadyRef.current?.(mapInstance);
+      return () => {
+        tilesListener.remove();
+        window.clearInterval(tileCheckInterval);
+      };
+    } catch (error) {
+      console.warn("[Route Map] Map initialization failed; using fallback map.", error);
+      setStatus("error");
+    }
+  }, [initialCenter.lat, initialCenter.lng, initialZoom, status]);
 
   if (status !== "ready") {
     return (
@@ -96,12 +136,17 @@ export function MapView({
           <div className="route-map-state">
             <span className="route-map-state-dot" />
             <strong>{status === "loading" ? "지도를 불러오는 중" : "지도 미리보기"}</strong>
-            <span>{status === "loading" ? "잠시만 기다려주세요" : "Google Maps API를 연결하면 실제 지도로 표시됩니다."}</span>
+            <span>{status === "loading" ? "잠시만 기다려주세요" : "Google Maps 연결을 확인해주세요."}</span>
           </div>
         )}
       </div>
     );
   }
 
-  return <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />;
+  return (
+    <div className={cn("route-map-live", className)}>
+      <div ref={mapContainer} className="route-map-live-canvas" />
+      {fallback && <div className={cn("route-map-live-fallback", !tilesLoaded && "is-visible")}>{fallback}</div>}
+    </div>
+  );
 }
