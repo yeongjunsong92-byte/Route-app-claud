@@ -1,17 +1,18 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  double,
+  index,
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -22,7 +23,89 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const savedPlaces = mysqlTable(
+  "saved_places",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    placeId: varchar("placeId", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    category: varchar("category", { length: 100 }),
+    address: text("address"),
+    imageUrl: text("imageUrl"),
+    lat: double("lat"),
+    lng: double("lng"),
+    note: text("note"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerIndex: index("saved_places_user_idx").on(table.userId),
+    placeIndex: uniqueIndex("saved_places_user_place_unique").on(table.userId, table.placeId),
+  }),
+);
+
+export const courses = mysqlTable(
+  "courses",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    region: varchar("region", { length: 100 }),
+    description: text("description"),
+    coverImage: text("coverImage"),
+    isPublic: boolean("isPublic").default(false).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    ownerIndex: index("courses_owner_idx").on(table.ownerId),
+    publicIndex: index("courses_public_idx").on(table.isPublic),
+  }),
+);
+
+export const courseItems = mysqlTable(
+  "course_items",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    courseId: int("courseId").notNull(),
+    placeId: varchar("placeId", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    category: varchar("category", { length: 100 }),
+    address: text("address"),
+    imageUrl: text("imageUrl"),
+    lat: double("lat"),
+    lng: double("lng"),
+    orderIndex: int("orderIndex").notNull(),
+    visitTime: varchar("visitTime", { length: 10 }),
+    durationMinutes: int("durationMinutes"),
+    estimatedCost: int("estimatedCost"),
+    note: text("note"),
+  },
+  (table) => ({
+    courseIndex: index("course_items_course_idx").on(table.courseId),
+  }),
+);
+
+export const courseSaves = mysqlTable(
+  "course_saves",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    courseId: int("courseId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    userCourseUnique: uniqueIndex("course_saves_user_course_unique").on(table.userId, table.courseId),
+    userIndex: index("course_saves_user_idx").on(table.userId),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here
+export type SavedPlace = typeof savedPlaces.$inferSelect;
+export type InsertSavedPlace = typeof savedPlaces.$inferInsert;
+export type Course = typeof courses.$inferSelect;
+export type InsertCourse = typeof courses.$inferInsert;
+export type CourseItem = typeof courseItems.$inferSelect;
+export type InsertCourseItem = typeof courseItems.$inferInsert;
+export type CourseSave = typeof courseSaves.$inferSelect;

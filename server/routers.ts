@@ -1,28 +1,66 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  createCourse,
+  getCourseDetails,
+  listCoursesByOwner,
+  listPublicCourses,
+  listSavedCourseIds,
+  listSavedPlaces,
+  saveCourse,
+  toggleSavedPlace,
+} from "./db";
+
+const placeInput = z.object({
+  placeId: z.string().min(1),
+  name: z.string().min(1),
+  category: z.string().optional(),
+  address: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  note: z.string().optional(),
+});
+
+const courseItemInput = placeInput.extend({
+  orderIndex: z.number().int().min(0),
+  visitTime: z.string().max(10).optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  estimatedCost: z.number().int().nonnegative().optional(),
+});
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
-
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  places: router({
+    saved: protectedProcedure.query(({ ctx }) => listSavedPlaces(ctx.user.id)),
+    toggleSaved: protectedProcedure.input(placeInput).mutation(({ ctx, input }) => toggleSavedPlace(ctx.user.id, input)),
+  }),
+  courses: router({
+    mine: protectedProcedure.query(({ ctx }) => listCoursesByOwner(ctx.user.id)),
+    savedIds: protectedProcedure.query(({ ctx }) => listSavedCourseIds(ctx.user.id)),
+    public: publicProcedure.query(() => listPublicCourses()),
+    get: publicProcedure.input(z.object({ courseId: z.number().int().positive() })).query(({ input }) => getCourseDetails(input.courseId)),
+    create: protectedProcedure.input(z.object({
+      title: z.string().min(1).max(255),
+      region: z.string().max(100).optional(),
+      description: z.string().optional(),
+      coverImage: z.string().url().optional(),
+      isPublic: z.boolean().optional(),
+      items: z.array(courseItemInput),
+    })).mutation(({ ctx, input }) => createCourse(ctx.user.id, input)),
+    save: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => saveCourse(ctx.user.id, input.courseId)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
