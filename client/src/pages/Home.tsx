@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { MapView } from "@/components/Map";
+import { trpc } from "@/lib/trpc";
 
 type Tab = "home" | "map" | "courses" | "mypage";
 
@@ -130,7 +131,10 @@ function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => 
 }
 
 export default function Home() {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { user, loading, isAuthenticated, logout } = useAuth();
+  const savePlaceMutation = trpc.places.toggleSaved.useMutation();
+  const createCourseMutation = trpc.courses.create.useMutation();
+  const updateProfileMutation = trpc.auth.updateProfile.useMutation();
   const [tab, setTab] = useState<Tab>("home");
 
   // 시안 기준 모달 상태들
@@ -145,8 +149,66 @@ export default function Home() {
   const [builderStep, setBuilderStep] = useState(1);
   const [builderTitle, setBuilderTitle] = useState("서울 데이트 코스");
   const [builderPlaces, setBuilderPlaces] = useState<Place[]>(mockPlaces);
+  const [builderTimes, setBuilderTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00" });
+  const [builderCosts, setBuilderCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000" });
+  const [profileName, setProfileName] = useState(user?.name || "여행자");
+  const [mapInstance, setMapInstance] = useState<any>(null);
+  const mapMarkers = useRef<any[]>([]);
+
+
+  const filteredPlaces = mockPlaces.filter((place) => {
+    const queryMatch = !searchQuery.trim() || `${place.name} ${place.category} ${place.address}`.toLowerCase().includes(searchQuery.toLowerCase());
+    const filterMatch = selectedFilter === "전체" || (selectedFilter === "맛집" && ["한식", "양식"].includes(place.category)) || place.category === selectedFilter;
+    return queryMatch && filterMatch;
+  });
+  const builderTotalCost = builderPlaces.reduce((sum, place) => sum + (Number(builderCosts[place.id]) || 0), 0);
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps?.marker) return;
+    mapMarkers.current.forEach((marker) => { marker.map = null; });
+    mapMarkers.current = filteredPlaces.map((place) => new window.google!.maps.marker.AdvancedMarkerElement({ map: mapInstance, position: { lat: place.lat, lng: place.lng }, title: place.name }));
+    return () => { mapMarkers.current.forEach((marker) => { marker.map = null; }); };
+  }, [mapInstance, filteredPlaces]);
 
   if (loading) return <div className="gpt-loading">로딩 중...</div>;
+
+  const handleSavePlace = async () => {
+    if (!saveSheetPlace) return;
+    try {
+      await savePlaceMutation.mutateAsync({ placeId: saveSheetPlace.id, name: saveSheetPlace.name, category: saveSheetPlace.category, address: saveSheetPlace.address, imageUrl: saveSheetPlace.image, lat: saveSheetPlace.lat, lng: saveSheetPlace.lng });
+      setSaveSheetPlace(null);
+      toast.success("내 장소에 저장되었습니다.");
+    } catch {
+      toast.error("장소를 저장하지 못했습니다.");
+    }
+  };
+
+  const handleCreateCourse = async () => {
+    try {
+      await createCourseMutation.mutateAsync({
+        title: builderTitle,
+        region: "서울",
+        coverImage: builderPlaces[0]?.image,
+        items: builderPlaces.map((place, index) => ({
+          placeId: place.id,
+          name: place.name,
+          category: place.category,
+          address: place.address,
+          imageUrl: place.image,
+          lat: place.lat,
+          lng: place.lng,
+          orderIndex: index,
+          visitTime: builderTimes[place.id] || "10:00",
+          estimatedCost: Number(builderCosts[place.id]) || 0,
+        })),
+      });
+      setIsBuilderOpen(false);
+      setTab("courses");
+      toast.success("코스가 성공적으로 저장되었습니다!");
+    } catch {
+      toast.error("코스를 저장하지 못했습니다.");
+    }
+  };
 
   if (!isAuthenticated) {
     return (
@@ -230,21 +292,13 @@ export default function Home() {
                 className="w-full h-full"
                 initialCenter={{ lat: 37.5446, lng: 127.0557 }}
                 initialZoom={15}
-                onMapReady={(map) => {
-                  mockPlaces.forEach((p) => {
-                    new window.google!.maps.marker.AdvancedMarkerElement({
-                      map,
-                      position: { lat: p.lat, lng: p.lng },
-                      title: p.name,
-                    });
-                  });
-                }}
+                onMapReady={setMapInstance}
               />
             </div>
 
             {/* 하단 장소 리스트 (시안 2의 2번 화면) */}
             <div className="gpt-place-drawer">
-              {mockPlaces.map((p) => (
+              {filteredPlaces.length === 0 ? <div className="gpt-empty-result"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 장소나 카테고리를 선택해보세요.</span></div> : filteredPlaces.map((p) => (
                 <div key={p.id} className="gpt-place-row" onClick={() => setSelectedPlace(p)}>
                   <img src={p.image} alt={p.name} />
                   <div className="gpt-place-texts">
@@ -287,15 +341,22 @@ export default function Home() {
           <div className="gpt-page gpt-mypage">
             <div className="gpt-profile-header">
               <div className="gpt-avatar"><User size={24} /></div>
-              <div>
+              <div className="gpt-profile-copy">
                 <h3>{user?.name || "여행자"}</h3>
                 <p>{user?.email || "route@user.com"}</p>
+              </div>
+            </div>
+            <div className="gpt-profile-edit">
+              <label htmlFor="profile-name">닉네임</label>
+              <div className="gpt-profile-edit-row">
+                <input id="profile-name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+                <button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필이 저장되었습니다."); } catch { toast.error("프로필을 저장하지 못했습니다."); } }} disabled={updateProfileMutation.isPending}>저장</button>
               </div>
             </div>
             <div className="gpt-menu-list">
               <button onClick={() => setTab("courses")}>내 코스 관리 <ChevronRight size={16} /></button>
               <button onClick={() => setTab("map")}>저장한 장소 <ChevronRight size={16} /></button>
-              <button onClick={() => { window.location.href = "/api/auth/logout"; }}>로그아웃 <ChevronRight size={16} /></button>
+              <button onClick={() => void logout()}>로그아웃 <ChevronRight size={16} /></button>
             </div>
           </div>
         )}
@@ -333,7 +394,7 @@ export default function Home() {
             <div className="gpt-sheet" onClick={(e) => e.stopPropagation()}>
               <div className="gpt-sheet-handle" />
               <h3>어디에 담아둘까요?</h3>
-              <button className="gpt-sheet-item" onClick={() => { setSaveSheetPlace(null); toast.success("내 장소에 저장되었습니다."); }}>
+              <button className="gpt-sheet-item" onClick={handleSavePlace} disabled={savePlaceMutation.isPending}>
                 <Bookmark size={18} />
                 <div>
                   <strong>내 장소에 저장</strong>
@@ -391,11 +452,11 @@ export default function Home() {
                     <strong>{builderPlaces[0]?.name}</strong>
                     <div className="gpt-time-row">
                       <span>방문 시간</span>
-                      <input type="time" defaultValue="14:00" />
+                      <input type="time" value={builderTimes[builderPlaces[0]?.id] || "14:00"} onChange={(e) => setBuilderTimes((current) => ({ ...current, [builderPlaces[0]?.id]: e.target.value }))} />
                     </div>
                     <div className="gpt-time-row">
                       <span>예상 비용</span>
-                      <input type="text" defaultValue="10,000원" />
+                      <input type="number" value={builderCosts[builderPlaces[0]?.id] || ""} onChange={(e) => setBuilderCosts((current) => ({ ...current, [builderPlaces[0]?.id]: e.target.value }))} placeholder="10000" />
                     </div>
                   </div>
                 </div>
@@ -406,7 +467,7 @@ export default function Home() {
                   <h3>코스 전체 확인</h3>
                   <div className="gpt-review-box">
                     <h4>{builderTitle}</h4>
-                    <p>장소 {builderPlaces.length}곳 · 총 예상 비용 75,000원</p>
+                    <p>장소 {builderPlaces.length}곳 · 총 예상 비용 {builderTotalCost.toLocaleString()}원</p>
                   </div>
                 </div>
               )}
@@ -416,11 +477,7 @@ export default function Home() {
                   className="gpt-btn-primary w-full"
                   onClick={() => {
                     if (builderStep < 4) setBuilderStep(builderStep + 1);
-                    else {
-                      setIsBuilderOpen(false);
-                      setTab("courses");
-                      toast.success("코스가 성공적으로 저장되었습니다!");
-                    }
+                    else void handleCreateCourse();
                   }}
                 >
                   {builderStep === 4 ? "저장하기" : "다음"}
@@ -454,13 +511,13 @@ export default function Home() {
                       <span className="node-num">{idx + 1}</span>
                       {idx < selectedCourse.items.length - 1 && <span className="node-line" />}
                     </div>
-                    <div className="gpt-timeline-card">
+                    <button className="gpt-timeline-card" onClick={() => { const place = mockPlaces.find((candidate) => candidate.name === item.name); if (place) { setSelectedCourse(null); setSelectedPlace(place); } }}>
                       <img src={item.image} alt="" />
                       <div>
                         <strong>{item.name}</strong>
                         <p>{item.duration} · {item.cost.toLocaleString()}원</p>
                       </div>
-                    </div>
+                    </button>
                   </div>
                 ))}
               </div>

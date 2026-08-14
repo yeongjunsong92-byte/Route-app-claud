@@ -12,6 +12,7 @@ import {
   listSavedPlaces,
   saveCourse,
   toggleSavedPlace,
+  upsertUser,
 } from "./db";
 
 const placeInput = z.object({
@@ -40,6 +41,10 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+    updateProfile: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100) })).mutation(async ({ ctx, input }) => {
+      await upsertUser({ openId: ctx.user.openId, name: input.name });
+      return { success: true, name: input.name } as const;
     }),
   }),
   places: router({

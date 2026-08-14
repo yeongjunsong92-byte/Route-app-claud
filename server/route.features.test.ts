@@ -16,6 +16,24 @@ describe("Route course procedures", () => {
     await expect(caller.courses.get({ courseId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects a blank profile name before hitting the database", async () => {
+    const caller = appRouter.createCaller({
+      ...publicContext(),
+      user: {
+        id: 1,
+        openId: "route-test-user",
+        name: "Route Test",
+        email: "route@test.local",
+        loginMethod: "test",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+    });
+    await expect(caller.auth.updateProfile({ name: " " })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects a blank course title before hitting the database", async () => {
     const caller = appRouter.createCaller({
       ...publicContext(),
