@@ -119,3 +119,125 @@ em { font-weight: inherit; }
 .profile-list-row > span { display: flex; flex: 1; flex-direction: column; gap: 4px; }
 .profile-list-row small { color: var(--muted); font-family: var(--mono); font-size: 8px; }
 .profile-list-row strong { font-family: var(--serif); font-size: 16px; font-weight: 500; }
+
+/* GPT 시안 기반 UI 스타일 */
+.gpt-shell { display: flex; justify-content: center; min-height: 100vh; background: #e8e6df; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.gpt-mobile-frame { position: relative; width: 100%; max-width: 412px; min-height: 100vh; background: #ffffff; box-shadow: 0 0 40px rgba(0,0,0,0.1); display: flex; flexDirection: column; }
+.gpt-status-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px 4px; font-size: 13px; font-weight: 600; background: #fff; z-index: 10; }
+.gpt-status-icons { display: flex; gap: 4px; }
+.gpt-status-icons span { width: 10px; height: 10px; background: #111; border-radius: 50%; display: inline-block; }
+
+.gpt-nav { position: absolute; bottom: 0; left: 0; right: 0; height: 64px; background: #fff; border-top: 1px solid #eee; display: flex; justify-content: space-around; align-items: center; z-index: 30; }
+.gpt-nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; color: #888; font-size: 11px; }
+.gpt-nav-item.active { color: #6554c0; font-weight: 600; }
+
+.gpt-page { flex: 1; padding: 12px 16px 80px; overflow-y: auto; background: #faf9f6; }
+.gpt-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.gpt-header h2 { font-size: 24px; font-weight: 700; color: #111; }
+.gpt-profile-btn { width: 36px; height: 36px; border-radius: 50%; background: #eee; border: none; display: flex; align-items: center; justify-content: center; }
+
+.gpt-home-content { display: flex; flex-direction: column; gap: 16px; }
+.gpt-banner-card { background: linear-gradient(135deg, #6554c0, #4c3eb5); color: #fff; padding: 20px; border-radius: 16px; cursor: pointer; }
+.gpt-badge { background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.gpt-banner-card h3 { font-size: 20px; font-weight: 700; margin: 10px 0 4px; }
+.gpt-banner-card p { font-size: 13px; opacity: 0.9; margin: 0; }
+.gpt-section-title { font-size: 16px; font-weight: 700; color: #111; margin-top: 8px; }
+
+.gpt-course-list { display: flex; flex-direction: column; gap: 12px; }
+.gpt-course-card { display: flex; gap: 12px; background: #fff; padding: 10px; border-radius: 12px; border: 1px solid #eee; cursor: pointer; }
+.gpt-course-card img { width: 70px; height: 70px; border-radius: 8px; object-fit: cover; }
+.gpt-course-info h4 { font-size: 15px; font-weight: 600; margin: 4px 0 4px; color: #111; }
+.gpt-course-info p { font-size: 12px; color: #777; margin: 0; }
+
+.gpt-map-page { display: flex; flexDirection: column; padding: 0 !important; }
+.gpt-search-bar-wrap { display: flex; align-items: center; gap: 8px; background: #fff; margin: 12px 16px; padding: 10px 14px; border-radius: 12px; border: 1px solid #ddd; z-index: 5; }
+.gpt-search-bar-wrap input { border: none; outline: none; flex: 1; font-size: 14px; background: transparent; }
+.gpt-filters { display: flex; gap: 8px; padding: 0 16px 12px; overflow-x: auto; z-index: 5; }
+.gpt-filter-chip { padding: 6px 14px; border-radius: 20px; background: #fff; border: 1px solid #ddd; font-size: 12px; color: #551; white-space: nowrap; }
+.gpt-filter-chip.active { background: #111; color: #fff; border-color: #111; }
+.gpt-map-area { flex: 1; min-height: 260px; position: relative; }
+.gpt-place-drawer { background: #fff; border-radius: 20px 20px 0 0; padding: 16px; max-height: 260px; overflow-y: auto; box-shadow: 0 -4px 20px rgba(0,0,0,0.06); z-index: 10; }
+.gpt-place-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f2f2f2; cursor: pointer; }
+.gpt-place-row img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; }
+.gpt-place-texts { flex: 1; }
+.gpt-place-texts h4 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.gpt-place-texts p { font-size: 12px; color: #666; margin: 0 0 2px; }
+.gpt-place-texts span { font-size: 11px; color: #999; }
+.gpt-bookmark-sm { width: 32px; height: 32px; border-radius: 50%; background: #f5f5f5; border: none; display: flex; align-items: center; justify-content: center; color: #555; }
+
+.gpt-page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.gpt-add-btn { background: #6554c0; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.gpt-my-courses { display: flex; flex-direction: column; gap: 12px; }
+.gpt-my-course-card { display: flex; gap: 12px; background: #fff; padding: 12px; border-radius: 12px; border: 1px solid #eee; }
+.gpt-my-course-card img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; }
+
+.gpt-mypage { display: flex; flex-direction: column; gap: 20px; }
+.gpt-profile-header { display: flex; align-items: center; gap: 16px; background: #fff; padding: 16px; border-radius: 14px; border: 1px solid #eee; }
+.gpt-avatar { width: 54px; height: 54px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; color: #555; }
+.gpt-menu-list { display: flex; flex-direction: column; background: #fff; border-radius: 14px; border: 1px solid #eee; overflow: hidden; }
+.gpt-menu-list button { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: none; background: #fff; border-bottom: 1px solid #f2f2f2; font-size: 14px; font-weight: 500; text-align: left; }
+
+.gpt-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; justify-content: center; align-items: flex-end; }
+.gpt-modal { width: 100%; max-width: 412px; background: #fff; border-radius: 24px 24px 0 0; max-height: 85vh; overflow-y: auto; padding-bottom: 30px; position: relative; }
+.gpt-modal-close { position: absolute; top: 14px; right: 14px; z-index: 10; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; border: none; display: flex; align-items: center; justify-content: center; }
+.gpt-modal-img { width: 100%; height: 220px; object-fit: cover; }
+.gpt-modal-body { padding: 20px; }
+.gpt-modal-body h3 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+.gpt-rating { font-size: 13px; color: #e67e22; font-weight: 600; margin: 0 0 8px; }
+.gpt-addr, .gpt-info-row { font-size: 13px; color: #666; display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.gpt-desc { font-size: 14px; color: #444; line-height: 1.5; margin-top: 12px; }
+.gpt-modal-actions { display: flex; gap: 10px; padding: 0 20px; }
+.gpt-btn-outline { flex: 1; height: 46px; border: 1px solid #ddd; background: #fff; border-radius: 12px; font-weight: 600; font-size: 14px; }
+.gpt-btn-primary { flex: 2; height: 46px; background: #6554c0; color: #fff; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; }
+
+.gpt-sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 110; display: flex; justify-content: center; align-items: flex-end; }
+.gpt-sheet { width: 100%; max-width: 412px; background: #fff; border-radius: 24px 24px 0 0; padding: 12px 20px 32px; }
+.gpt-sheet-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px; }
+.gpt-sheet h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.gpt-sheet-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 0; background: none; border: none; border-bottom: 1px solid #f2f2f2; text-align: left; }
+.gpt-sheet-item strong { font-size: 15px; color: #111; display: block; }
+.gpt-sheet-item p { font-size: 12px; color: #777; margin: 0; }
+.gpt-sheet-cancel { width: 100%; margin-top: 16px; padding: 12px; background: #f2f2f2; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; }
+
+.gpt-builder-modal { width: 100%; max-width: 412px; background: #fff; border-radius: 24px 24px 0 0; height: 80vh; display: flex; flex-direction: column; padding: 16px 20px; }
+.gpt-builder-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.gpt-builder-header button { background: none; border: none; }
+.gpt-builder-step { flex: 1; overflow-y: auto; }
+.gpt-builder-step h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.gpt-builder-places { display: flex; flex-direction: column; gap: 8px; }
+.gpt-builder-place-row { display: flex; align-items: center; gap: 10px; background: #f9f9f9; padding: 8px 12px; border-radius: 10px; }
+.gpt-builder-place-row img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.gpt-builder-time-card { background: #f9f9f9; padding: 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; }
+.gpt-time-row { display: flex; justify-content: space-between; align-items: center; }
+.gpt-time-row input { padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; width: 110px; }
+.gpt-review-box { background: #f4f2ff; padding: 16px; border-radius: 12px; border: 1px solid #dcd4ff; }
+.gpt-builder-footer { padding-top: 12px; }
+
+.gpt-detail-modal { width: 100%; max-width: 412px; background: #fff; border-radius: 24px 24px 0 0; height: 90vh; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.gpt-detail-hero { height: 220px; background-size: cover; background-position: center; position: relative; display: flex; align-items: flex-end; padding: 20px; color: #fff; }
+.gpt-detail-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.7)); }
+.gpt-detail-hero-content { position: relative; z-index: 2; }
+.gpt-detail-hero-content span { font-size: 12px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 4px; }
+.gpt-detail-hero-content h2 { font-size: 22px; font-weight: 700; margin: 6px 0 2px; }
+.gpt-detail-hero-content p { font-size: 12px; opacity: 0.9; margin: 0; }
+.gpt-timeline { flex: 1; overflow-y: auto; padding: 20px; }
+.gpt-timeline h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.gpt-timeline-row { display: flex; gap: 12px; margin-bottom: 16px; }
+.gpt-time-col { width: 50px; text-align: right; }
+.gpt-time-col strong { display: block; font-size: 13px; font-weight: 600; }
+.gpt-time-col span { font-size: 11px; color: #888; }
+.gpt-timeline-node { display: flex; flex-direction: column; align-items: center; position: relative; }
+.node-num { width: 20px; height: 20px; background: #6554c0; color: #fff; font-size: 10px; font-weight: 600; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.node-line { width: 2px; background: #ddd; flex: 1; margin: 4px 0; }
+.gpt-timeline-card { flex: 1; display: flex; gap: 10px; background: #f9f9f9; padding: 10px; border-radius: 10px; border: 1px solid #eee; }
+.gpt-timeline-card img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; }
+.gpt-timeline-card strong { font-size: 14px; display: block; margin-bottom: 2px; }
+.gpt-timeline-card p { font-size: 12px; color: #666; margin: 0; }
+.gpt-detail-footer { padding: 16px 20px; border-top: 1px solid #eee; background: #fff; }
+
+.gpt-auth-screen { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f4f4f6; }
+.gpt-auth-box { text-align: center; padding: 40px; max-width: 360px; }
+.gpt-logo { font-size: 42px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+.gpt-auth-desc { font-size: 14px; color: #666; line-height: 1.5; margin-bottom: 24px; }
+.gpt-auth-btn { width: 100%; height: 48px; background: #111; color: #fff; border-radius: 12px; font-weight: 600; }
+.gpt-loading { display: flex; justify-content: center; align-items: center; min-height: 100vh; font-size: 14px; color: #666; }
