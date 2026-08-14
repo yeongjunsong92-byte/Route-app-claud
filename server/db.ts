@@ -133,6 +133,19 @@ export async function getCourseDetails(courseId: number) {
   return { ...course, items };
 }
 
+export async function updateCourse(userId: number, courseId: number, input: CourseInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.transaction(async (tx) => {
+    const owned = await tx.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+    if (!owned[0]) throw new Error("Course not found or not owned by user");
+    await tx.update(courses).set({ title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, isPublic: input.isPublic ?? false }).where(eq(courses.id, courseId));
+    await tx.delete(courseItems).where(eq(courseItems.courseId, courseId));
+    if (input.items.length > 0) await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
+    return courseId;
+  });
+}
+
 export async function saveCourse(userId: number, courseId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");

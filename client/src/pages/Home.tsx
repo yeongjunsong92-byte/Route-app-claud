@@ -1,31 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   Bookmark,
   Calendar,
-  Check,
+  ChevronDown,
   ChevronRight,
-  Clock,
+  Clock3,
   Compass,
   Heart,
   MapPin,
-  Menu,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Search,
   Share2,
   User,
+  Users,
   X,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
-type Tab = "home" | "map" | "courses" | "mypage";
+type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "edit-course";
+type Tab = "home" | "map" | "courses" | "friends" | "mypage";
 
 type Place = {
   id: string;
@@ -38,498 +40,197 @@ type Place = {
   reviewCount: number;
   lat: number;
   lng: number;
-  hours?: string;
-  priceRange?: string;
+  hours: string;
+  phone: string;
 };
 
+type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string };
+type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[] };
+
 const mockPlaces: Place[] = [
-  {
-    id: "p1",
-    name: "성수 식당",
-    category: "한식",
-    address: "서울 성동구 연무장7길 5",
-    image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=85",
-    description: "정갈한 한식과 편안한 분위기가 있는 성수의 대표 맛집입니다.",
-    rating: 4.6,
-    reviewCount: 1248,
-    lat: 37.5446,
-    lng: 127.0557,
-    hours: "11:30 - 22:00",
-    priceRange: "10,000 - 30,000원",
-  },
-  {
-    id: "p2",
-    name: "오븐 성수",
-    category: "카페",
-    address: "서울 성동구 연무장길 7",
-    image: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=85",
-    description: "매일 구워내는 베이커리와 스페셜티 커피가 있는 공간.",
-    rating: 4.4,
-    reviewCount: 892,
-    lat: 37.545,
-    lng: 127.0565,
-    hours: "10:00 - 21:00",
-    priceRange: "6,000 - 15,000원",
-  },
-  {
-    id: "p3",
-    name: "성수동 스테이크",
-    category: "양식",
-    address: "서울 성동구 아차산로403",
-    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=85",
-    description: "부드러운 육질과 와인이 어우러지는 다이닝 레스토랑.",
-    rating: 4.5,
-    reviewCount: 2100,
-    lat: 37.5435,
-    lng: 127.0582,
-    hours: "12:00 - 23:00",
-    priceRange: "30,000 - 60,000원",
-  },
+  { id: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=85", description: "성수에서 오래 사랑받은 따뜻한 한식 공간입니다.", rating: 4.6, reviewCount: 1245, lat: 37.5446, lng: 127.0557, hours: "11:30 - 22:00", phone: "02-1234-5678" },
+  { id: "p2", name: "오븐 성수", category: "카페", address: "서울 성동구 연무장길 7", image: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=85", description: "매일 구워내는 베이커리와 스페셜티 커피.", rating: 4.4, reviewCount: 892, lat: 37.545, lng: 127.0565, hours: "10:00 - 21:00", phone: "02-2345-6789" },
+  { id: "p3", name: "성수동 스테이크", category: "맛집", address: "서울 성동구 아차산로 403", image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=85", description: "부드러운 육질과 와인이 어우러지는 다이닝.", rating: 4.5, reviewCount: 2100, lat: 37.5435, lng: 127.0582, hours: "12:00 - 23:00", phone: "02-3456-7890" },
+  { id: "p4", name: "서울숲", category: "관광지", address: "서울 성동구 뚝섬로 273", image: "https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&q=85", description: "도심 속에서 산책과 휴식을 즐길 수 있는 공원.", rating: 4.8, reviewCount: 4530, lat: 37.5447, lng: 127.0374, hours: "24시간", phone: "02-460-2905" },
 ];
 
-const mockCourses = [
-  {
-    id: "c1",
-    title: "서울 데이트 코스",
-    region: "서울",
-    author: "여행하는 지훈",
-    days: 1,
-    placesCount: 4,
-    likes: 31,
-    image: "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=800&q=85",
-    items: [
-      { name: "서울숲", time: "14:00", duration: "1시간 30분", cost: 10000, image: mockPlaces[0].image },
-      { name: "성수 카페 오르", time: "15:40", duration: "1시간", cost: 15000, image: mockPlaces[1].image },
-      { name: "온더보더 성수점", time: "17:00", duration: "1시간 30분", cost: 50000, image: mockPlaces[2].image },
-      { name: "한강공원", time: "19:00", duration: "1시간", cost: 0, image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=85" },
-    ],
-  },
-];
+const publicCourse: Course = {
+  id: "c1", title: "제주 2박 3일 힐링 코스", region: "제주", author: "여행하는 지훈", image: "https://images.unsplash.com/photo-1471922694854-ff1b63b20054?auto=format&fit=crop&w=1200&q=85", likes: 24, days: 3,
+  items: [
+    { name: "협재 해수욕장", time: "10:00", duration: "1시간", cost: 0, image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=500&q=85" },
+    { name: "애월 카페거리", time: "12:30", duration: "1시간 30분", cost: 15000, image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=500&q=85" },
+    { name: "오설록 티 뮤지엄", time: "15:00", duration: "1시간", cost: 12000, image: "https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?auto=format&fit=crop&w=500&q=85" },
+    { name: "애월 해안도로", time: "17:30", duration: "1시간", cost: 0, image: "https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=500&q=85" },
+  ],
+};
+
+const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
+
+function MapFallback({ markers = mockPlaces }: { markers?: Place[] }) {
+  return (
+    <div className="route-map-fallback">
+      <div className="route-map-water" />
+      <div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-map-road road-d" />
+      {markers.map((place, index) => <button key={place.id} className={`route-map-marker marker-${index + 1}`} onClick={() => undefined} aria-label={place.name}><MapPin size={18} fill="currentColor" /></button>)}
+      <div className="route-map-attribution">Google Maps preview</div>
+    </div>
+  );
+}
+
+function StatusBar() { return <div className="route-status-bar"><span>9:41</span><span className="route-status-icons">● ● ●</span></div>; }
 
 function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
   const tabs: Array<{ id: Tab; label: string; icon: typeof Compass }> = [
-    { id: "home", label: "홈", icon: Compass },
-    { id: "map", label: "지도", icon: MapPin },
-    { id: "courses", label: "내 코스", icon: Calendar },
-    { id: "mypage", label: "마이", icon: User },
+    { id: "home", label: "홈", icon: Compass }, { id: "map", label: "지도", icon: MapPin }, { id: "courses", label: "코스", icon: Calendar }, { id: "friends", label: "친구", icon: Users }, { id: "mypage", label: "마이", icon: User },
   ];
-
-  return (
-    <nav className="gpt-nav">
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = active === tab.id;
-        return (
-          <button key={tab.id} onClick={() => onChange(tab.id)} className={`gpt-nav-item ${isActive ? "active" : ""}`}>
-            <Icon size={20} strokeWidth={isActive ? 2.2 : 1.6} />
-            <span>{tab.label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
+  return <nav className="route-bottom-nav">{tabs.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}><Icon size={18} /><span>{label}</span></button>)}</nav>;
 }
+
+function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: ReactNode }) {
+  return <header className="route-screen-header">{onBack ? <button onClick={onBack} aria-label="뒤로"><ArrowLeft size={18} /></button> : <span className="route-header-spacer" />}<h1>{title}</h1><div>{right || <span className="route-header-spacer" />}</div></header>;
+}
+
+function PlaceRow({ place, onClick, onSave }: { place: Place; onClick: () => void; onSave: () => void }) {
+  return <button className="route-place-row" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>★ {place.rating} ({place.reviewCount}) · {place.category}</small><em>{place.address}</em></span><span className="route-place-distance">350m</span><span className="route-place-save" onClick={(event) => { event.stopPropagation(); onSave(); }}><Bookmark size={16} /></span></button>;
+}
+
+function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
 
 export default function Home() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const savePlaceMutation = trpc.places.toggleSaved.useMutation();
   const createCourseMutation = trpc.courses.create.useMutation();
+  const updateCourseMutation = trpc.courses.update.useMutation();
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
-  const [tab, setTab] = useState<Tab>("home");
-
-  // 시안 기준 모달 상태들
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState("전체");
+  const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
+  const myCoursesQuery = trpc.courses.mine.useQuery(undefined, { enabled: isAuthenticated });
+  const trpcUtils = trpc.useUtils();
+  const [screen, setScreen] = useState<Screen>("map");
+  const [selectedTab, setSelectedTab] = useState<Tab>("map");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("전체");
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [saveSheetPlace, setSaveSheetPlace] = useState<Place | null>(null);
-  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
-
-  // 코스 만들기 4단계 상태
-  const [builderStep, setBuilderStep] = useState(1);
-  const [builderTitle, setBuilderTitle] = useState("서울 데이트 코스");
-  const [builderPlaces, setBuilderPlaces] = useState<Place[]>(mockPlaces);
-  const [builderTimes, setBuilderTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00" });
-  const [builderCosts, setBuilderCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000" });
+  const [selectedCourse, setSelectedCourse] = useState<Course>(publicCourse);
+  const [saveSheetOpen, setSaveSheetOpen] = useState(false);
+  const [courseStep, setCourseStep] = useState(1);
+  const [courseTitle, setCourseTitle] = useState("서울 데이트 코스");
+  const [coursePlaces, setCoursePlaces] = useState<Place[]>(mockPlaces);
+  const [courseTimes, setCourseTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00", p4: "19:00" });
+  const [courseCosts, setCourseCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000", p4: "0" });
+  const [courseMemos, setCourseMemos] = useState<Record<string, string>>({});
   const [profileName, setProfileName] = useState(user?.name || "여행자");
-  const [mapInstance, setMapInstance] = useState<any>(null);
-  const mapMarkers = useRef<any[]>([]);
+  const selectedCourseId = Number(selectedCourse.id);
+  const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
+  const selectedCourseQuery = trpc.courses.get.useQuery(selectedCourseInput, { enabled: isAuthenticated && screen === "edit-course" && selectedCourseId > 0 });
 
-
-  const filteredPlaces = mockPlaces.filter((place) => {
-    const queryMatch = !searchQuery.trim() || `${place.name} ${place.category} ${place.address}`.toLowerCase().includes(searchQuery.toLowerCase());
-    const filterMatch = selectedFilter === "전체" || (selectedFilter === "맛집" && ["한식", "양식"].includes(place.category)) || place.category === selectedFilter;
-    return queryMatch && filterMatch;
-  });
-  const builderTotalCost = builderPlaces.reduce((sum, place) => sum + (Number(builderCosts[place.id]) || 0), 0);
+  const filteredPlaces = useMemo(() => mockPlaces.filter((place) => {
+    const matchesQuery = !query.trim() || `${place.name} ${place.category} ${place.address}`.toLowerCase().includes(query.toLowerCase());
+    const matchesFilter = filter === "전체" || (filter === "맛집" && place.category === "맛집") || place.category === filter;
+    return matchesQuery && matchesFilter;
+  }), [filter, query]);
+  const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
 
   useEffect(() => {
-    if (!mapInstance || !window.google?.maps?.marker) return;
-    mapMarkers.current.forEach((marker) => { marker.map = null; });
-    mapMarkers.current = filteredPlaces.map((place) => new window.google!.maps.marker.AdvancedMarkerElement({ map: mapInstance, position: { lat: place.lat, lng: place.lng }, title: place.name }));
-    return () => { mapMarkers.current.forEach((marker) => { marker.map = null; }); };
-  }, [mapInstance, filteredPlaces]);
+    const detail = selectedCourseQuery.data;
+    if (screen !== "edit-course" || !detail?.items?.length) return;
+    const normalizedPlaces = detail.items.map((item: any) => {
+      const fallback = mockPlaces.find((place) => place.id === item.placeId || place.name === item.name) || mockPlaces[0];
+      return { ...fallback, id: item.placeId, name: item.name, category: item.category || fallback.category, address: item.address || fallback.address, image: item.imageUrl || fallback.image, lat: item.lat || fallback.lat, lng: item.lng || fallback.lng };
+    });
+    setCoursePlaces(normalizedPlaces);
+    setCourseTitle(detail.title);
+    setCourseTimes(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.visitTime || "10:00"])));
+    setCourseCosts(Object.fromEntries(detail.items.map((item: any) => [item.placeId, String(item.estimatedCost || 0)])));
+    setCourseMemos(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.note || ""])));
+  }, [screen, selectedCourseQuery.data]);
 
-  if (loading) return <div className="gpt-loading">로딩 중...</div>;
+  const ownedCourses = useMemo<Course[]>(() => (myCoursesQuery.data || []).map((course: any) => ({ id: String(course.id), title: course.title, region: course.region || "서울", author: user?.name || "나의 Route", image: course.coverImage || mockPlaces[0].image, likes: 0, days: 1, items: [] })), [myCoursesQuery.data, user?.name]);
+  const hasDbCourses = ownedCourses.length > 0;
+  const courseList = ownedCourses;
 
-  const handleSavePlace = async () => {
-    if (!saveSheetPlace) return;
+  if (loading) return <div className="route-loading">Route를 준비하고 있습니다.</div>;
+  if (!isAuthenticated) return <div className="route-login"><div><Compass size={38} /><h1>Route</h1><p>발견한 장소를 저장하고<br />나만의 여행으로 만들어보세요.</p><Button onClick={startLogin}>Manus로 시작하기</Button></div></div>;
+
+  const setTab = (tab: Tab) => {
+    setSelectedTab(tab);
+    const next: Record<Tab, Screen> = { home: "home", map: "map", courses: "my-courses", friends: "friends", mypage: "mypage" };
+    setScreen(next[tab]);
+  };
+  const openPlace = (place: Place) => { setSelectedPlace(place); setScreen("place-detail"); };
+  const openSaveSheet = (place: Place) => { setSelectedPlace(place); setSaveSheetOpen(true); };
+  const savePlace = async () => {
+    if (!selectedPlace) return;
+    try { await savePlaceMutation.mutateAsync({ placeId: selectedPlace.id, name: selectedPlace.name, category: selectedPlace.category, address: selectedPlace.address, imageUrl: selectedPlace.image, lat: selectedPlace.lat, lng: selectedPlace.lng }); setSaveSheetOpen(false); toast.success("내 장소에 저장했습니다."); } catch { toast.error("저장하지 못했습니다."); }
+  };
+  const saveCourse = async () => {
     try {
-      await savePlaceMutation.mutateAsync({ placeId: saveSheetPlace.id, name: saveSheetPlace.name, category: saveSheetPlace.category, address: saveSheetPlace.address, imageUrl: saveSheetPlace.image, lat: saveSheetPlace.lat, lng: saveSheetPlace.lng });
-      setSaveSheetPlace(null);
-      toast.success("내 장소에 저장되었습니다.");
-    } catch {
-      toast.error("장소를 저장하지 못했습니다.");
+      await createCourseMutation.mutateAsync({ title: courseTitle, region: "서울", coverImage: coursePlaces[0]?.image, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, orderIndex: index, visitTime: courseTimes[place.id] || "10:00", estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      await trpcUtils.courses.mine.invalidate();
+      toast.success("코스를 저장했습니다."); setScreen("my-courses"); setSelectedTab("courses");
+    } catch { toast.error("코스를 저장하지 못했습니다."); }
+  };
+  const saveEditedCourse = async () => {
+    const numericCourseId = Number(selectedCourse.id);
+    if (!Number.isInteger(numericCourseId) || numericCourseId <= 0) {
+      toast.error("먼저 저장된 내 코스를 선택해 주세요.");
+      return;
     }
+    try {
+      await updateCourseMutation.mutateAsync({ courseId: numericCourseId, title: courseTitle, region: selectedCourse.region, coverImage: coursePlaces[0]?.image, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, orderIndex: index, visitTime: courseTimes[place.id] || "10:00", estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      await trpcUtils.courses.mine.invalidate();
+      toast.success("코스 수정 내용을 저장했습니다."); setScreen("my-courses"); setSelectedTab("courses");
+    } catch { toast.error("코스 수정 내용을 저장하지 못했습니다."); }
   };
 
-  const handleCreateCourse = async () => {
-    try {
-      await createCourseMutation.mutateAsync({
-        title: builderTitle,
-        region: "서울",
-        coverImage: builderPlaces[0]?.image,
-        items: builderPlaces.map((place, index) => ({
-          placeId: place.id,
-          name: place.name,
-          category: place.category,
-          address: place.address,
-          imageUrl: place.image,
-          lat: place.lat,
-          lng: place.lng,
-          orderIndex: index,
-          visitTime: builderTimes[place.id] || "10:00",
-          estimatedCost: Number(builderCosts[place.id]) || 0,
-        })),
-      });
-      setIsBuilderOpen(false);
-      setTab("courses");
-      toast.success("코스가 성공적으로 저장되었습니다!");
-    } catch {
-      toast.error("코스를 저장하지 못했습니다.");
-    }
-  };
+  const renderMap = (compact = false) => <div className={compact ? "route-map-box compact" : "route-map-box"}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} fallback={<MapFallback markers={filteredPlaces} />} /></div>;
 
-  if (!isAuthenticated) {
-    return (
-      <div className="gpt-auth-screen">
-        <div className="gpt-auth-box">
-          <h1 className="gpt-logo">Route</h1>
-          <p className="gpt-auth-desc">여행 중 발견한 장소를 저장하고,<br />나만의 코스를 만들어보세요.</p>
-          <Button onClick={startLogin} className="gpt-auth-btn">Manus로 시작하기</Button>
-        </div>
-      </div>
-    );
-  }
+  const renderMapScreen = () => <div className="route-screen route-map-screen">
+    <div className="route-map-search" onClick={() => setScreen("search")}><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="장소를 검색해보세요" /><ChevronRight size={14} /></div>
+    <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>
+    {renderMap()}
+    <div className="route-map-sheet"><div className="route-sheet-handle" /><div className="route-sheet-title"><strong>주변 장소</strong><span>{filteredPlaces.length}곳</span></div>{filteredPlaces.length ? filteredPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>필터를 바꾸거나 다른 장소를 찾아보세요.</span></div>}</div>
+  </div>;
 
-  return (
-    <div className="gpt-shell">
-      <div className="gpt-mobile-frame">
-        {/* 상단 타이틀바 (시안 1, 2, 3 공통 9:41 헤더) */}
-        <div className="gpt-status-bar">
-          <span>9:41</span>
-          <div className="gpt-status-icons"><span /><span /><span /></div>
-        </div>
+  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="성수 맛집" /><button onClick={() => setQuery("")}><X size={15} /></button></div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true)}<div className="route-search-list">{filteredPlaces.map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
-        {/* 탭 내용 */}
-        {tab === "home" && (
-          <div className="gpt-page">
-            <header className="gpt-header">
-              <h2>Route</h2>
-              <button className="gpt-profile-btn" onClick={() => setTab("mypage")}>
-                <User size={16} />
-              </button>
-            </header>
-            <div className="gpt-home-content">
-              <div className="gpt-banner-card" onClick={() => setSelectedCourse(mockCourses[0])}>
-                <span className="gpt-badge">추천 코스</span>
-                <h3>서울 데이트 코스</h3>
-                <p>성수동의 핫플레이스와 한강 야경을 잇는 코스</p>
-              </div>
-              <h3 className="gpt-section-title">공개 코스 둘러보기</h3>
-              <div className="gpt-course-list">
-                {mockCourses.map((c) => (
-                  <div key={c.id} className="gpt-course-card" onClick={() => setSelectedCourse(c)}>
-                    <img src={c.image} alt={c.title} />
-                    <div className="gpt-course-info">
-                      <h4>{c.title}</h4>
-                      <p>{c.author} · 좋아요 {c.likes}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+  const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => { setCoursePlaces((items) => items.some((item) => item.id === selectedPlace.id) ? items : [...items, selectedPlace]); setCourseStep(2); setScreen("course-create"); }}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 
-        {tab === "map" && (
-          <div className="gpt-page gpt-map-page">
-            <div className="gpt-search-bar-wrap">
-              <Search size={16} />
-              <input
-                type="text"
-                placeholder="장소를 검색해보세요"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && <button onClick={() => setSearchQuery("")}><X size={14} /></button>}
-            </div>
-            <div className="gpt-filters">
-              {["전체", "맛집", "카페", "관광지", "숙소"].map((f) => (
-                <button
-                  key={f}
-                  className={`gpt-filter-chip ${selectedFilter === f ? "active" : ""}`}
-                  onClick={() => setSelectedFilter(f)}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+  const renderSaveSheet = () => <div className="route-overlay" onClick={() => setSaveSheetOpen(false)}><div className="route-save-sheet" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><h3>다음 중 선택하세요</h3><button onClick={savePlace}><Bookmark size={20} /><span><strong>내 장소에 저장</strong><small>나중에 다시 확인할 장소를 저장합니다.</small></span><ChevronRight size={16} /></button><button onClick={() => { setSaveSheetOpen(false); setCourseStep(1); setScreen("course-create"); }}><Plus size={20} /><span><strong>새 코스 만들기</strong><small>이 장소를 포함한 새 코스를 만듭니다.</small></span><ChevronRight size={16} /></button><button onClick={() => { setSaveSheetOpen(false); setScreen("my-courses"); }}><Bookmark size={20} /><span><strong>기존 코스에 추가</strong><small>이미 만든 코스에 장소를 추가합니다.</small></span><ChevronRight size={16} /></button><button className="cancel" onClick={() => setSaveSheetOpen(false)}>취소</button></div></div>;
 
-            {/* 지도 영역 */}
-            <div className="gpt-map-area">
-              <MapView
-                className="w-full h-full"
-                initialCenter={{ lat: 37.5446, lng: 127.0557 }}
-                initialZoom={15}
-                onMapReady={setMapInstance}
-              />
-            </div>
+  const renderMyPlaces = () => <div className="route-screen route-list-screen"><ScreenHeader title="내 장소" onBack={() => setScreen("map")} right={<button><MoreHorizontal size={18} /></button>} /><div className="route-list-tabs"><button className="active">전체</button><button>맛집</button><button>카페</button><button>관광지</button></div><div className="route-list-content">{(savedPlacesQuery.data?.length ? savedPlacesQuery.data : mockPlaces).map((place: any) => <PlaceRow key={place.id} place={{ ...place, image: place.imageUrl || place.image, rating: place.rating || 4.6, reviewCount: place.reviewCount || 0, hours: place.hours || "영업시간 확인", phone: place.phone || "" }} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
-            {/* 하단 장소 리스트 (시안 2의 2번 화면) */}
-            <div className="gpt-place-drawer">
-              {filteredPlaces.length === 0 ? <div className="gpt-empty-result"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 장소나 카테고리를 선택해보세요.</span></div> : filteredPlaces.map((p) => (
-                <div key={p.id} className="gpt-place-row" onClick={() => setSelectedPlace(p)}>
-                  <img src={p.image} alt={p.name} />
-                  <div className="gpt-place-texts">
-                    <h4>{p.name}</h4>
-                    <p>★ {p.rating} ({p.reviewCount}) · {p.category}</p>
-                    <span>{p.address}</span>
-                  </div>
-                  <button className="gpt-bookmark-sm" onClick={(e) => { e.stopPropagation(); setSaveSheetPlace(p); }}>
-                    <Bookmark size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  const renderMyCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="내 코스" onBack={() => setTab("map")} right={<button className="route-header-add" onClick={() => { setCourseStep(1); setScreen("course-create"); }}>+ 새 코스</button>} /><div className="route-list-tabs"><button className="active">내 코스</button><button>저장 코스</button></div><div className="route-course-list">{courseList.length ? courseList.map((course) => <div className="route-large-course-card" key={course.id}><button className="route-course-card-main" onClick={() => { setSelectedCourse(course); setScreen("course-detail"); }}><img src={course.image} alt="" /><span><strong>{course.title}</strong><small>{course.region} · 장소 {course.items.length}곳 · 좋아요 {course.likes}</small></span><ChevronRight size={16} /></button>{hasDbCourses && <button className="route-course-edit-button" aria-label="코스 수정" onClick={() => { setSelectedCourse(course); setCourseTitle(course.title); setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("edit-course"); }}><Pencil size={15} /></button>}</div>) : <div className="route-empty"><Calendar size={22} /><strong>저장된 내 코스가 없습니다</strong><span>새 코스를 만들어 여행 일정을 기록해보세요.</span></div>}</div></div>;
 
-        {tab === "courses" && (
-          <div className="gpt-page gpt-courses-page">
-            <div className="gpt-page-header">
-              <h2>내 코스</h2>
-              <button className="gpt-add-btn" onClick={() => { setBuilderStep(1); setIsBuilderOpen(true); }}>
-                <Plus size={18} /> 새 코스
-              </button>
-            </div>
-            <div className="gpt-my-courses">
-              {mockCourses.map((c) => (
-                <div key={c.id} className="gpt-my-course-card" onClick={() => setSelectedCourse(c)}>
-                  <img src={c.image} alt="" />
-                  <div>
-                    <h4>{c.title}</h4>
-                    <p>{c.days}일 일정 · 장소 {c.placesCount}곳</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  const renderEditCourse = () => <div className="route-screen route-course-create"><ScreenHeader title="내 버전 코스" onBack={() => setScreen("my-courses")} right={<span>수정</span>} /><div className="route-create-step"><h2>코스 정보를 수정하세요</h2><p>장소 순서와 방문 시간, 예상 비용을 바꿀 수 있습니다.</p><label className="route-edit-label">코스 이름<Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} /></label><div className="route-edit-place-list"><h3>일정 장소 {coursePlaces.length}곳</h3>{coursePlaces.slice(0, 4).map((place, index) => <div className="route-edit-place-block" key={place.id}><div className="route-edit-place-row"><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span><div className="route-edit-place-actions"><button disabled={index === 0} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button disabled={index === coursePlaces.length - 1} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button></div></div><div className="route-edit-fields"><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label className="memo">메모<textarea value={courseMemos[place.id] || ""} onChange={(event) => setCourseMemos((current) => ({ ...current, [place.id]: event.target.value }))} placeholder="이 장소에 대한 메모" /></label></div></div>)}</div></div><div className="route-bottom-action"><button className="secondary" onClick={() => setScreen("my-courses")}>취소</button><button onClick={() => void saveEditedCourse()} disabled={updateCourseMutation.isPending}>저장하기</button></div></div>;
 
-        {tab === "mypage" && (
-          <div className="gpt-page gpt-mypage">
-            <div className="gpt-profile-header">
-              <div className="gpt-avatar"><User size={24} /></div>
-              <div className="gpt-profile-copy">
-                <h3>{user?.name || "여행자"}</h3>
-                <p>{user?.email || "route@user.com"}</p>
-              </div>
-            </div>
-            <div className="gpt-profile-edit">
-              <label htmlFor="profile-name">닉네임</label>
-              <div className="gpt-profile-edit-row">
-                <input id="profile-name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-                <button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필이 저장되었습니다."); } catch { toast.error("프로필을 저장하지 못했습니다."); } }} disabled={updateProfileMutation.isPending}>저장</button>
-              </div>
-            </div>
-            <div className="gpt-menu-list">
-              <button onClick={() => setTab("courses")}>내 코스 관리 <ChevronRight size={16} /></button>
-              <button onClick={() => setTab("map")}>저장한 장소 <ChevronRight size={16} /></button>
-              <button onClick={() => void logout()}>로그아웃 <ChevronRight size={16} /></button>
-            </div>
-          </div>
-        )}
+  const renderCourseCreate = () => <div className="route-screen route-course-create"><ScreenHeader title="코스 만들기" onBack={() => courseStep > 1 ? setCourseStep(courseStep - 1) : setScreen("map")} right={<span>{courseStep}/4</span>} /><StepIndicator step={courseStep} />{courseStep === 1 && <div className="route-create-step route-create-name"><Compass size={34} className="route-step-icon" /><h2>코스 이름을 정해주세요</h2><Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} placeholder="서울 데이트 코스" /><small>예) 부산 1박 2일 여행, 제주 힐링 코스</small></div>}{courseStep === 2 && <div className="route-create-step"><h2>장소 추가하기</h2><p>지도에서 장소를 검색하거나 내 장소에서 추가해보세요.</p><div className="route-inline-search"><Search size={15} /><input placeholder="장소 검색" onChange={(event) => setQuery(event.target.value)} /></div>{renderMap(true)}<div className="route-added-places"><strong>추가한 장소 {coursePlaces.length}</strong>{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><b>{index + 1}</b><span>{place.name}<small>{place.address}</small></span><button onClick={() => setCoursePlaces((items) => items.filter((item) => item.id !== place.id))}>×</button></div>)}</div></div>}{courseStep === 3 && <div className="route-create-step"><h2>세부사항 설정하기</h2><p>각 장소의 시간, 예상 비용, 메모를 설정해보세요.</p>{coursePlaces.slice(0, 4).map((place, index) => <details key={place.id} open={index === 0} className="route-place-detail-accordion"><summary><b>{index + 1}</b>{place.name}<ChevronDown size={15} /></summary><div><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>메모<textarea placeholder="메모를 입력해보세요" /></label></div></details>)}</div>}{courseStep === 4 && <div className="route-create-step"><h2>코스 전체 확인</h2><p>코스의 전체 일정과 예상 비용을 확인하고 저장합니다.</p><div className="route-review-timeline">{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><time>{courseTimes[place.id] || "10:00"}<small>도착</small></time><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>1시간 · {(Number(courseCosts[place.id]) || 0).toLocaleString()}원</small></span></div>)}</div><div className="route-total-cost"><span>예상 총 비용</span><strong>{totalCost.toLocaleString()}원</strong></div></div>}<div className="route-bottom-action"><button className="secondary" disabled={courseStep === 1} onClick={() => setCourseStep((step) => Math.max(1, step - 1))}>이전</button><button onClick={() => courseStep < 4 ? setCourseStep((step) => step + 1) : void saveCourse()}>{courseStep === 4 ? "저장하기" : "다음"}</button></div></div>;
 
-        <BottomNav active={tab} onChange={setTab} />
+  const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={selectedCourse.title} onBack={() => setScreen("friends")} right={<button><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{selectedCourse.region} · {selectedCourse.days}일</span><h2>{selectedCourse.title}</h2><p>by {selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {selectedCourse.items.length}곳</span><span><Clock3 size={14} /> 1일 일정</span></div><div className="route-detail-timeline"><h3>코스 일정</h3>{selectedCourse.items.map((item, index) => <button key={item.name} onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{item.duration} · {item.cost.toLocaleString()}원</small></span></button>)}</div><div className="route-bottom-action single"><button onClick={() => { setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("course-create"); }}>내 코스로 저장</button></div></div>;
 
-        {/* 장소 상세 모달 (시안 2의 3번 화면) */}
-        {selectedPlace && (
-          <div className="gpt-modal-overlay">
-            <div className="gpt-modal">
-              <button className="gpt-modal-close" onClick={() => setSelectedPlace(null)}><X size={18} /></button>
-              <img src={selectedPlace.image} alt="" className="gpt-modal-img" />
-              <div className="gpt-modal-body">
-                <h3>{selectedPlace.name}</h3>
-                <p className="gpt-rating">★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p>
-                <p className="gpt-addr"><MapPin size={14} /> {selectedPlace.address}</p>
-                {selectedPlace.hours && <p className="gpt-info-row"><Clock size={14} /> 영업시간: {selectedPlace.hours}</p>}
-                <p className="gpt-desc">{selectedPlace.description}</p>
-              </div>
-              <div className="gpt-modal-actions">
-                <button className="gpt-btn-outline" onClick={() => { setSelectedPlace(null); setSaveSheetPlace(selectedPlace); }}>
-                  저장
-                </button>
-                <button className="gpt-btn-primary" onClick={() => { setSelectedPlace(null); setBuilderStep(1); setIsBuilderOpen(true); }}>
-                  코스에 추가
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+  const renderFriends = () => <div className="route-screen route-friends"><div className="route-map-topbar"><div className="route-brand">친구·팔로우</div><button onClick={() => setScreen("user-search")}><Search size={18} /></button></div><div className="route-friends-search" onClick={() => setScreen("user-search")}><Search size={15} />사용자나 친구를 검색해보세요</div><h3>팔로잉</h3><div className="route-avatar-row">{["여행하는 지훈", "jane_park", "travel_ve", "summer", "june"].map((name, i) => <button key={name} onClick={() => setScreen("profile")}><img src={`https://i.pravatar.cc/100?img=${i + 12}`} alt="" /><span>{name}</span></button>)}</div><div className="route-friend-section-title"><h3>추천 여행자</h3><button onClick={() => setScreen("user-search")}>더보기 <ChevronRight size={13} /></button></div>{["여행하는 지훈", "여행의 아카이브", "오늘도 여행중"].map((name, i) => <button key={name} className="route-user-row" onClick={() => setScreen("profile")}><img src={`https://i.pravatar.cc/100?img=${i + 20}`} alt="" /><span><strong>{name}</strong><small>새로운 여행을 기록하는 사람</small></span><b>팔로우</b></button>)}<h3 className="route-recent-heading">최근 업데이트된 코스</h3><button className="route-large-course-card compact" onClick={() => { setSelectedCourse(publicCourse); setScreen("course-detail"); }}><img src={publicCourse.image} alt="" /><span><strong>{publicCourse.title}</strong><small>{publicCourse.author} · ♥ {publicCourse.likes}</small></span><ChevronRight size={16} /></button></div>;
 
-        {/* 장소 저장 바텀시트 (시안 2의 4번 화면) */}
-        {saveSheetPlace && (
-          <div className="gpt-sheet-overlay" onClick={() => setSaveSheetPlace(null)}>
-            <div className="gpt-sheet" onClick={(e) => e.stopPropagation()}>
-              <div className="gpt-sheet-handle" />
-              <h3>어디에 담아둘까요?</h3>
-              <button className="gpt-sheet-item" onClick={handleSavePlace} disabled={savePlaceMutation.isPending}>
-                <Bookmark size={18} />
-                <div>
-                  <strong>내 장소에 저장</strong>
-                  <p>내 장소 목록에 저장됩니다.</p>
-                </div>
-              </button>
-              <button className="gpt-sheet-item" onClick={() => { setSaveSheetPlace(null); setBuilderStep(1); setIsBuilderOpen(true); }}>
-                <Plus size={18} />
-                <div>
-                  <strong>새 코스 만들기</strong>
-                  <p>이 장소로 새로운 코스를 시작합니다.</p>
-                </div>
-              </button>
-              <button className="gpt-sheet-cancel" onClick={() => setSaveSheetPlace(null)}>취소</button>
-            </div>
-          </div>
-        )}
+  const renderUserSearch = () => <div className="route-screen route-list-screen"><ScreenHeader title="사용자 검색" onBack={() => setScreen("friends")} /><div className="route-search-input"><Search size={16} /><input autoFocus placeholder="이름이나 아이디 검색" /></div>{["여행하는 지훈", "여행이 좋아요", "여행의 기록", "오늘도 여행중", "여행을 말하다"].map((name, i) => <button className="route-user-row" key={name} onClick={() => setScreen("profile")}><img src={`https://i.pravatar.cc/100?img=${i + 30}`} alt="" /><span><strong>{name}</strong><small>@route_user_{i + 1}</small></span><b>팔로우</b></button>)}</div>;
 
-        {/* 4단계 코스 생성 모달 (시안 3) */}
-        {isBuilderOpen && (
-          <div className="gpt-modal-overlay">
-            <div className="gpt-builder-modal">
-              <div className="gpt-builder-header">
-                <button onClick={() => setBuilderStep(Math.max(1, builderStep - 1))}><ArrowLeft size={18} /></button>
-                <span>코스 만들기 ({builderStep}/4)</span>
-                <button onClick={() => setIsBuilderOpen(false)}><X size={18} /></button>
-              </div>
+  const renderProfile = () => <div className="route-screen route-profile"><ScreenHeader title="프로필" onBack={() => setScreen("friends")} right={<button><MoreHorizontal size={18} /></button>} /><div className="route-profile-cover" style={{ backgroundImage: `url(${publicCourse.image})` }} /><div className="route-profile-main"><img className="route-profile-avatar" src="https://i.pravatar.cc/160?img=12" alt="" /><div className="route-profile-name-row"><div><h2>{user?.name || "여행하는 지훈"}</h2><p>여행을 기록하고 코스를 만드는 사람</p></div><button>팔로우</button></div><div className="route-profile-stats"><span><strong>12</strong> 코스</span><span><strong>342</strong> 팔로워</span><span><strong>18</strong> 팔로잉</span></div><div className="route-profile-tabs"><button className="active">공개 코스</button><button>저장한 코스</button></div><div className="route-profile-grid">{sampleCourses.map((course) => <button key={course.id} onClick={() => { setSelectedCourse(course); setScreen("public-course-detail"); }}><img src={course.image} alt="" /><strong>{course.title}</strong><small>♥ {course.likes}</small></button>)}</div></div></div>;
 
-              {builderStep === 1 && (
-                <div className="gpt-builder-step">
-                  <h3>코스 이름을 정해주세요</h3>
-                  <Input value={builderTitle} onChange={(e) => setBuilderTitle(e.target.value)} placeholder="예: 부산 1박 2일 맛집 투어" />
-                </div>
-              )}
+  const renderPublicCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="공개 코스" onBack={() => setScreen("friends")} right={<button><Search size={17} /></button>} /><div className="route-list-tabs"><button className="active">팔로잉</button><button>저장한 코스</button></div>{sampleCourses.map((course) => <button className="route-public-course-row" key={course.id} onClick={() => { setSelectedCourse(course); setScreen("public-course-detail"); }}><img src={course.image} alt="" /><span><strong>{course.title}</strong><small>{course.region} · {course.author}</small><em>♥ {course.likes}　○ 5</em></span><ChevronRight size={16} /></button>)}</div>;
 
-              {builderStep === 2 && (
-                <div className="gpt-builder-step">
-                  <h3>장소를 확인하고 순서를 정하세요</h3>
-                  <div className="gpt-builder-places">
-                    {builderPlaces.map((p, idx) => (
-                      <div key={p.id} className="gpt-builder-place-row">
-                        <span>{idx + 1}</span>
-                        <img src={p.image} alt="" />
-                        <div><strong>{p.name}</strong><p>{p.address}</p></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+  const renderMyPage = () => <div className="route-screen route-profile-settings"><ScreenHeader title="마이페이지" /><div className="route-settings-profile"><div className="route-settings-avatar"><User size={25} /></div><div><h2>{user?.name || profileName}</h2><p>{user?.email || "route@user.com"}</p></div><button onClick={() => setScreen("profile")}><Pencil size={16} /></button></div><div className="route-settings-edit"><label>닉네임</label><div><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /><button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필을 저장했습니다."); } catch { toast.error("프로필 저장에 실패했습니다."); } }}>저장</button></div></div><div className="route-settings-list"><button onClick={() => setScreen("my-courses")}>내 코스 <ChevronRight size={16} /></button><button onClick={() => setScreen("my-places")}>저장 장소 <ChevronRight size={16} /></button><button onClick={() => setScreen("public-courses")}>저장 코스 <ChevronRight size={16} /></button><button onClick={() => void logout()}>로그아웃 <ChevronRight size={16} /></button></div></div>;
 
-              {builderStep === 3 && (
-                <div className="gpt-builder-step">
-                  <h3>방문 시간과 예산을 설정하세요</h3>
-                  <div className="gpt-builder-time-card">
-                    <strong>{builderPlaces[0]?.name}</strong>
-                    <div className="gpt-time-row">
-                      <span>방문 시간</span>
-                      <input type="time" value={builderTimes[builderPlaces[0]?.id] || "14:00"} onChange={(e) => setBuilderTimes((current) => ({ ...current, [builderPlaces[0]?.id]: e.target.value }))} />
-                    </div>
-                    <div className="gpt-time-row">
-                      <span>예상 비용</span>
-                      <input type="number" value={builderCosts[builderPlaces[0]?.id] || ""} onChange={(e) => setBuilderCosts((current) => ({ ...current, [builderPlaces[0]?.id]: e.target.value }))} placeholder="10000" />
-                    </div>
-                  </div>
-                </div>
-              )}
+  let content: ReactNode;
+  if (screen === "map") content = renderMapScreen();
+  else if (screen === "search") content = renderSearchScreen();
+  else if (screen === "place-detail") content = renderPlaceDetail();
+  else if (screen === "my-places") content = renderMyPlaces();
+  else if (screen === "my-courses") content = renderMyCourses();
+  else if (screen === "course-create") content = renderCourseCreate();
+  else if (screen === "course-detail" || screen === "public-course-detail") content = renderCourseDetail();
+  else if (screen === "edit-course") content = renderEditCourse();
+  else if (screen === "friends") content = renderFriends();
+  else if (screen === "user-search") content = renderUserSearch();
+  else if (screen === "profile") content = renderProfile();
+  else if (screen === "public-courses") content = renderPublicCourses();
+  else content = <div className="route-screen route-home"><ScreenHeader title="Route" right={<button><User size={18} /></button>} /><button className="route-home-hero" onClick={() => { setSelectedCourse(publicCourse); setScreen("course-detail"); }}><span>추천 코스</span><h2>제주 2박 3일<br />힐링 코스</h2><small>여행의 흐름을 그대로 따라가보세요.</small></button><h3>최근 저장한 장소</h3>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div>;
 
-              {builderStep === 4 && (
-                <div className="gpt-builder-step">
-                  <h3>코스 전체 확인</h3>
-                  <div className="gpt-review-box">
-                    <h4>{builderTitle}</h4>
-                    <p>장소 {builderPlaces.length}곳 · 총 예상 비용 {builderTotalCost.toLocaleString()}원</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="gpt-builder-footer">
-                <button
-                  className="gpt-btn-primary w-full"
-                  onClick={() => {
-                    if (builderStep < 4) setBuilderStep(builderStep + 1);
-                    else void handleCreateCourse();
-                  }}
-                >
-                  {builderStep === 4 ? "저장하기" : "다음"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 코스 상세 / 일정 보기 (시안 1, 3) */}
-        {selectedCourse && (
-          <div className="gpt-modal-overlay">
-            <div className="gpt-detail-modal">
-              <button className="gpt-modal-close" onClick={() => setSelectedCourse(null)}><X size={18} /></button>
-              <div className="gpt-detail-hero" style={{ backgroundImage: `url(${selectedCourse.image})` }}>
-                <div className="gpt-detail-hero-content">
-                  <span>{selectedCourse.region} · {selectedCourse.days}일 일정</span>
-                  <h2>{selectedCourse.title}</h2>
-                  <p>by {selectedCourse.author}</p>
-                </div>
-              </div>
-              <div className="gpt-timeline">
-                <h3>하루의 흐름</h3>
-                {selectedCourse.items.map((item: any, idx: number) => (
-                  <div key={idx} className="gpt-timeline-row">
-                    <div className="gpt-time-col">
-                      <strong>{item.time}</strong>
-                      <span>도착</span>
-                    </div>
-                    <div className="gpt-timeline-node">
-                      <span className="node-num">{idx + 1}</span>
-                      {idx < selectedCourse.items.length - 1 && <span className="node-line" />}
-                    </div>
-                    <button className="gpt-timeline-card" onClick={() => { const place = mockPlaces.find((candidate) => candidate.name === item.name); if (place) { setSelectedCourse(null); setSelectedPlace(place); } }}>
-                      <img src={item.image} alt="" />
-                      <div>
-                        <strong>{item.name}</strong>
-                        <p>{item.duration} · {item.cost.toLocaleString()}원</p>
-                      </div>
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="gpt-detail-footer">
-                <Button className="gpt-btn-primary w-full" onClick={() => { setSelectedCourse(null); toast.success("내 코스에 저장되었습니다."); }}>
-                  내 코스로 저장
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <div className="route-app-shell"><div className="route-phone"><StatusBar />{content}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
 }

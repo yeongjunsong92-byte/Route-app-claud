@@ -12,6 +12,7 @@ import {
   listSavedPlaces,
   saveCourse,
   toggleSavedPlace,
+  updateCourse,
   upsertUser,
 } from "./db";
 
@@ -64,6 +65,15 @@ export const appRouter = router({
       isPublic: z.boolean().optional(),
       items: z.array(courseItemInput),
     })).mutation(({ ctx, input }) => createCourse(ctx.user.id, input)),
+    update: protectedProcedure.input(z.object({
+      courseId: z.number().int().positive(),
+      title: z.string().min(1).max(255),
+      region: z.string().max(100).optional(),
+      description: z.string().optional(),
+      coverImage: z.string().url().optional(),
+      isPublic: z.boolean().optional(),
+      items: z.array(courseItemInput),
+    })).mutation(({ ctx, input }) => updateCourse(ctx.user.id, input.courseId, input)),
     save: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => saveCourse(ctx.user.id, input.courseId)),
   }),
 });
