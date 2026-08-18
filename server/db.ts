@@ -158,3 +158,25 @@ export async function listSavedCourseIds(userId: number) {
   if (!db) return [];
   return db.select({ courseId: courseSaves.courseId }).from(courseSaves).where(eq(courseSaves.userId, userId)).orderBy(desc(courseSaves.createdAt));
 }
+
+export async function listSavedCourses(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: courses.id,
+      title: courses.title,
+      region: courses.region,
+      description: courses.description,
+      coverImage: courses.coverImage,
+      isPublic: courses.isPublic,
+      ownerId: courses.ownerId,
+      createdAt: courses.createdAt,
+      updatedAt: courses.updatedAt,
+      savedAt: courseSaves.createdAt,
+    })
+    .from(courseSaves)
+    .innerJoin(courses, eq(courseSaves.courseId, courses.id))
+    .where(eq(courseSaves.userId, userId))
+    .orderBy(desc(courseSaves.createdAt));
+}

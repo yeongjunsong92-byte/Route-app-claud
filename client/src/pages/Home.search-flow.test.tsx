@@ -28,7 +28,7 @@ vi.mock("@/lib/trpc", () => {
   return {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, saved: { useQuery: query } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, mine: { useQuery: query }, get: { useQuery: query } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, mine: { useQuery: query }, saved: { useQuery: query }, get: { useQuery: query } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() } } }),
     },
@@ -78,5 +78,38 @@ describe("home place search flow", () => {
     fireEvent.pointerDown(secondDragZone, { pointerId: 3, clientY: 420 });
     fireEvent.pointerUp(secondDragZone, { pointerId: 3, clientY: 500 });
     expect(container.querySelector(".route-map-sheet")).toBeNull();
+  });
+
+  it("shows the redesigned travel management page and opens saved places", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    expect(screen.getByText("MY ROUTE")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "내 여행 관리" })).toBeTruthy();
+
+    await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
+    expect(screen.getByRole("heading", { name: "내 장소" })).toBeTruthy();
+  });
+
+  it("opens my courses, saved courses, and profile management from my page", async () => {
+    const user = userEvent.setup();
+    let view = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getAllByRole("button", { name: /내 코스/ })[0]);
+    expect(screen.getByRole("heading", { name: "내 코스" })).toBeTruthy();
+
+    view.unmount();
+    view = render(<Home />);
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getByRole("button", { name: /저장한 코스/ }));
+    expect(screen.getByRole("heading", { name: "저장 코스" })).toBeTruthy();
+
+    view.unmount();
+    view = render(<Home />);
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getByRole("button", { name: "프로필 수정" }));
+    expect(screen.getByRole("heading", { name: "프로필" })).toBeTruthy();
   });
 });

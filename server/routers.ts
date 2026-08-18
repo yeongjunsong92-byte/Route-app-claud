@@ -7,6 +7,7 @@ import {
   createCourse,
   getCourseDetails,
   listCoursesByOwner,
+  listSavedCourses,
   listPublicCourses,
   listSavedCourseIds,
   listSavedPlaces,
@@ -54,6 +55,7 @@ export const appRouter = router({
   }),
   courses: router({
     mine: protectedProcedure.query(({ ctx }) => listCoursesByOwner(ctx.user.id)),
+    saved: protectedProcedure.query(({ ctx }) => listSavedCourses(ctx.user.id)),
     savedIds: protectedProcedure.query(({ ctx }) => listSavedCourseIds(ctx.user.id)),
     public: publicProcedure.query(() => listPublicCourses()),
     get: publicProcedure.input(z.object({ courseId: z.number().int().positive() })).query(({ input }) => getCourseDetails(input.courseId)),

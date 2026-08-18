@@ -12,4 +12,9 @@ describe("Route map styling", () => {
     expect(homeSource).toContain("label: { text: String(index + 1)");
     expect(homeSource).toContain("label: { text: `${minutes}분`");
   });
+
+  it("disables native Google place icons so app-owned place details handle map clicks", () => {
+    const mapSource = readFileSync(resolve(process.cwd(), "client/src/components/Map.tsx"), "utf8");
+    expect(mapSource).toContain("clickableIcons: false");
+  });
 });

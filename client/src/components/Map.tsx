@@ -110,6 +110,7 @@ export function MapView({
         fullscreenControl: false,
         zoomControl: false,
         streetViewControl: false,
+        clickableIcons: false,
       });
       map.current = mapInstance;
       const checkForTiles = () => {

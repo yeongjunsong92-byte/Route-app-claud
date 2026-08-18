@@ -14,5 +14,9 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('sheetMode !== "hidden"');
     expect(homeSource).toContain("const pinSvg");
     expect(homeSource).toContain('route-map-screen sheet-${sheetMode}');
+    expect(homeSource).toContain("new google.maps.places.AutocompleteService()");
+    expect(homeSource).toContain("service.getPlacePredictions");
+    expect(homeSource).toContain("map.panTo({ lat: place.lat, lng: place.lng })");
+    expect(homeSource).toContain("categoryPinColor(place.category)");
   });
 });

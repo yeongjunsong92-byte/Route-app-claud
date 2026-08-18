@@ -30,7 +30,7 @@ import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
-type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "edit-course";
+type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "saved-courses" | "edit-course";
 type Tab = "home" | "map" | "courses" | "friends" | "mypage";
 
 type Place = {
@@ -70,6 +70,14 @@ const publicCourse: Course = {
 
 const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
 
+function categoryPinColor(category: string) {
+  if (category === "맛집") return "#e978a5";
+  if (category === "카페") return "#6351dd";
+  if (category === "관광지") return "#2f9e7d";
+  if (category === "숙소") return "#4f83e8";
+  return "#6351dd";
+}
+
 function MapFallback({ markers = mockPlaces, selectedId, onSelect }: { markers?: Place[]; selectedId?: string; onSelect?: (place: Place) => void }) {
   const markerPositions = [
     { top: "27%", left: "31%" }, { top: "42%", left: "53%" }, { top: "58%", right: "23%" }, { top: "66%", left: "24%" },
@@ -79,7 +87,7 @@ function MapFallback({ markers = mockPlaces, selectedId, onSelect }: { markers?:
     <div className="route-map-fallback">
       <div className="route-map-water" />
       <div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-map-road road-d" />
-      {markers.slice(0, 8).map((place, index) => <button key={place.id} style={markerPositions[index]} className={`route-map-marker ${selectedId === place.id ? "is-selected" : ""}`} onClick={() => onSelect?.(place)} aria-label={place.name}><MapPin size={selectedId === place.id ? 22 : 18} fill="currentColor" /></button>)}
+      {markers.slice(0, 8).map((place, index) => <button key={place.id} style={{ ...markerPositions[index], color: categoryPinColor(place.category) }} className={`route-map-marker ${selectedId === place.id ? "is-selected" : ""}`} onClick={() => onSelect?.(place)} aria-label={place.name}><MapPin size={selectedId === place.id ? 22 : 18} fill="currentColor" /></button>)}
       <div className="route-map-attribution">Google Maps preview</div>
     </div>
   );
@@ -228,6 +236,7 @@ export default function Home() {
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
   const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
   const myCoursesQuery = trpc.courses.mine.useQuery(undefined, { enabled: isAuthenticated });
+  const savedCoursesQuery = trpc.courses.saved.useQuery(undefined, { enabled: isAuthenticated });
   const trpcUtils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("map");
   const [selectedTab, setSelectedTab] = useState<Tab>("map");
@@ -248,6 +257,8 @@ export default function Home() {
   const [livePlaces, setLivePlaces] = useState<Place[]>([]);
   const [hasLiveSearch, setHasLiveSearch] = useState(false);
   const [placesLoading, setPlacesLoading] = useState(false);
+  const [placePredictions, setPlacePredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [mapReadyTick, setMapReadyTick] = useState(0);
   const [sheetMode, setSheetMode] = useState<"expanded" | "peek" | "hidden">("peek");
   const mainMapRef = useRef<google.maps.Map | null>(null);
   const placeMarkerRefs = useRef<google.maps.Marker[]>([]);
@@ -266,6 +277,15 @@ export default function Home() {
     const source = hasLiveSearch ? livePlaces : filteredPlaces;
     return filter === "전체" ? source : source.filter((place) => place.category === filter);
   }, [filter, filteredPlaces, hasLiveSearch, livePlaces]);
+  const focusMapPlace = useCallback((place: Place) => {
+    const map = mainMapRef.current;
+    if (map) {
+      map.panTo({ lat: place.lat, lng: place.lng });
+      if ((map.getZoom() || 0) < 16) map.setZoom(16);
+    }
+    setMapPreviewPlace(place);
+    setSheetMode("peek");
+  }, []);
   const clearMapMarkers = useCallback(() => {
     placeMarkerRefs.current.forEach((marker) => marker.setMap(null));
     placeMarkerRefs.current = [];
@@ -274,7 +294,7 @@ export default function Home() {
     if (!window.google?.maps) return;
     clearMapMarkers();
     placeMarkerRefs.current = places.map((place, index) => {
-      const pinColor = index % 3 === 0 ? "#e978a5" : "#6351dd";
+      const pinColor = categoryPinColor(place.category);
       const pinSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg"><path d="M17 1C8.72 1 2 7.47 2 15.45c0 10.54 15 24.55 15 24.55s15-14.01 15-24.55C32 7.47 25.28 1 17 1Z" fill="${pinColor}" stroke="white" stroke-width="2"/><circle cx="17" cy="15.5" r="5" fill="white" fill-opacity=".96"/></svg>`)}`;
       const marker = new google.maps.Marker({
         map,
@@ -284,15 +304,15 @@ export default function Home() {
         zIndex: 10 + index,
       });
       marker.addListener("click", () => {
-        setMapPreviewPlace(place);
-        setSheetMode("peek");
+        focusMapPlace(place);
       });
       return marker;
     });
-  }, [clearMapMarkers]);
+  }, [clearMapMarkers, focusMapPlace]);
   const handleMainMapReady = useCallback((map: google.maps.Map) => {
     mainMapRef.current = map;
     syncMapMarkers(map, mapPlaces);
+    setMapReadyTick((tick) => tick + 1);
   }, [mapPlaces, syncMapMarkers]);
   useEffect(() => {
     if (mainMapRef.current) syncMapMarkers(mainMapRef.current, mapPlaces);
@@ -301,6 +321,20 @@ export default function Home() {
     clearMapMarkers();
     currentLocationMarkerRef.current?.setMap(null);
   }, [clearMapMarkers]);
+  useEffect(() => {
+    const keyword = query.trim();
+    if (screen !== "search" || keyword.length < 2 || !window.google?.maps?.places?.AutocompleteService) {
+      setPlacePredictions([]);
+      return;
+    }
+    let active = true;
+    const service = new google.maps.places.AutocompleteService();
+    service.getPlacePredictions({ input: keyword, componentRestrictions: { country: "kr" } }, (predictions, status) => {
+      if (!active) return;
+      setPlacePredictions(status === google.maps.places.PlacesServiceStatus.OK && predictions ? predictions.slice(0, 5) : []);
+    });
+    return () => { active = false; };
+  }, [mapReadyTick, query, screen]);
   const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
   const courseStops = useMemo<RouteStop[]>(() => coursePlaces.slice(0, 8).map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [coursePlaces]);
   const selectedCourseStops = useMemo<RouteStop[]>(() => selectedCourse.items.map((item, index) => {
@@ -380,11 +414,12 @@ export default function Home() {
     if (types?.some((type) => ["lodging", "hotel"].includes(type))) return "숙소";
     return "관광지";
   };
-  const searchPlaces = () => {
-    const keyword = query.trim();
+  const searchPlaces = (keywordOverride = query) => {
+    const keyword = keywordOverride.trim();
     if (!keyword) {
       setHasLiveSearch(false);
       setLivePlaces([]);
+      setPlacePredictions([]);
       setSheetMode("peek");
       return;
     }
@@ -394,6 +429,7 @@ export default function Home() {
       return;
     }
     setPlacesLoading(true);
+    setPlacePredictions([]);
     const service = new google.maps.places.PlacesService(map);
     service.textSearch({ query: keyword, location: map.getCenter() || { lat: 37.5446, lng: 127.0557 }, radius: 7000 }, (results, status) => {
       setPlacesLoading(false);
@@ -434,6 +470,11 @@ export default function Home() {
         map.fitBounds(bounds, 48);
       }
     });
+  };
+  const choosePrediction = (prediction: google.maps.places.AutocompletePrediction) => {
+    setQuery(prediction.description);
+    setPlacePredictions([]);
+    searchPlaces(prediction.description);
   };
   const moveToCurrentLocation = () => {
     const map = mainMapRef.current;
@@ -480,7 +521,7 @@ export default function Home() {
     {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : "주변 장소"}</strong><span>{mapPlaces.length}곳</span></div>{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : mapPlaces.length ? (sheetMode === "expanded" ? mapPlaces : mapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 키워드 또는 카테고리로 검색해보세요.</span></div>}</div>}
   </div>;
 
-  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={searchPlaces}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); }}><X size={15} /></button></div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true, true)}<div className="route-search-list">{(hasLiveSearch ? mapPlaces : filteredPlaces).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
+  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true, true)}<div className="route-search-list">{(hasLiveSearch ? mapPlaces : filteredPlaces).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
   const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => addPlaceToCourse(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 
@@ -504,7 +545,14 @@ export default function Home() {
 
   const renderPublicCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="공개 코스" onBack={() => setScreen("friends")} right={<button><Search size={17} /></button>} /><div className="route-list-tabs"><button className="active">팔로잉</button><button>저장한 코스</button></div>{sampleCourses.map((course) => <button className="route-public-course-row" key={course.id} onClick={() => { setSelectedCourse(course); setScreen("public-course-detail"); }}><img src={course.image} alt="" /><span><strong>{course.title}</strong><small>{course.region} · {course.author}</small><em>♥ {course.likes}　○ 5</em></span><ChevronRight size={16} /></button>)}</div>;
 
-  const renderMyPage = () => <div className="route-screen route-profile-settings"><ScreenHeader title="마이페이지" /><div className="route-settings-profile"><div className="route-settings-avatar"><User size={25} /></div><div><h2>{user?.name || profileName}</h2><p>{user?.email || "route@user.com"}</p></div><button onClick={() => setScreen("profile")}><Pencil size={16} /></button></div><div className="route-settings-edit"><label>닉네임</label><div><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /><button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필을 저장했습니다."); } catch { toast.error("프로필 저장에 실패했습니다."); } }}>저장</button></div></div><div className="route-settings-list"><button onClick={() => setScreen("my-courses")}>내 코스 <ChevronRight size={16} /></button><button onClick={() => setScreen("my-places")}>저장 장소 <ChevronRight size={16} /></button><button onClick={() => setScreen("public-courses")}>저장 코스 <ChevronRight size={16} /></button><button onClick={() => void logout()}>로그아웃 <ChevronRight size={16} /></button></div></div>;
+  const renderSavedCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="저장 코스" onBack={() => setScreen("mypage")} /><div className="route-saved-course-intro"><Bookmark size={17} /><span><strong>저장한 여행 코스</strong><small>나중에 참고할 여행 경험을 모아보세요.</small></span></div><div className="route-list-content">{savedCoursesQuery.isLoading ? <div className="route-empty"><Bookmark size={21} /><strong>저장 코스를 불러오는 중입니다</strong></div> : savedCoursesQuery.data?.length ? savedCoursesQuery.data.map((course: any) => <button className="route-saved-course-row" key={course.id} onClick={() => { setSelectedCourse({ id: String(course.id), title: course.title, region: course.region || "여행", author: "공개 코스", image: course.coverImage || mockPlaces[0].image, likes: 0, days: 1, items: [] }); setScreen("public-course-detail"); }}><img src={course.coverImage || mockPlaces[0].image} alt="" /><span><strong>{course.title}</strong><small>{course.region || "지역 정보 없음"}</small><em>저장됨</em></span><ChevronRight size={16} /></button>) : <div className="route-empty"><Bookmark size={22} /><strong>저장한 코스가 없습니다</strong><span>공개 코스에서 마음에 드는 여행 코스를 저장해보세요.</span></div>}</div></div>;
+
+  const renderMyPage = () => {
+    const displayName = user?.name || profileName || "여행자";
+    const savedPlaceCount = savedPlacesQuery.data?.length || 0;
+    const myCourseCount = courseList.length;
+    return <div className="route-screen route-my-page"><div className="route-my-page-topbar"><span>MY ROUTE</span><button aria-label="프로필 수정" onClick={() => setScreen("profile")}><Pencil size={17} /></button></div><section className="route-my-profile-hero"><div className="route-my-avatar">{displayName.slice(0, 1).toUpperCase()}</div><div className="route-my-profile-copy"><span>TRAVEL ARCHIVE</span><h1>{displayName}</h1><p>{user?.email || "나만의 여행 기록을 모아보세요."}</p></div><button className="route-my-profile-edit" onClick={() => setScreen("profile")}>프로필 편집</button></section><section className="route-my-summary-grid"><button onClick={() => setScreen("my-places")}><MapPin size={18} /><strong>{savedPlaceCount}</strong><span>저장 장소</span></button><button onClick={() => setScreen("my-courses")}><Calendar size={18} /><strong>{myCourseCount}</strong><span>내 코스</span></button><button onClick={() => setScreen("saved-courses")}><Bookmark size={18} /><strong>{savedCoursesQuery.data?.length || "보기"}</strong><span>저장 코스</span></button></section><section className="route-my-page-section"><div className="route-my-section-heading"><div><span>TRAVEL MANAGEMENT</span><h2>내 여행 관리</h2></div><button onClick={() => { setCourseStep(1); setScreen("course-create"); }}>새 코스 <Plus size={15} /></button></div><div className="route-my-management-card"><button onClick={() => setScreen("my-places")}><span className="route-my-management-icon places"><MapPin size={19} /></span><span><strong>내 장소</strong><small>저장한 장소를 보고 코스에 추가하세요.</small></span><em>{savedPlaceCount}곳</em><ChevronRight size={16} /></button><button onClick={() => setScreen("my-courses")}><span className="route-my-management-icon courses"><Calendar size={19} /></span><span><strong>내 코스</strong><small>만든 여행 일정을 관리하세요.</small></span><em>{myCourseCount}개</em><ChevronRight size={16} /></button><button onClick={() => setScreen("saved-courses")}><span className="route-my-management-icon saves"><Bookmark size={19} /></span><span><strong>저장한 코스</strong><small>다른 여행자의 코스를 다시 확인하세요.</small></span><ChevronRight size={16} /></button></div></section><section className="route-my-page-section route-my-account-section"><div className="route-my-section-heading"><div><span>PROFILE</span><h2>계정과 설정</h2></div></div><div className="route-my-nickname-card"><label>닉네임<input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label><button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필을 저장했습니다."); } catch { toast.error("프로필 저장에 실패했습니다."); } }}>저장</button></div><div className="route-my-settings-card"><button onClick={() => setScreen("profile")}><span><User size={17} />프로필 관리</span><ChevronRight size={16} /></button><button onClick={() => void logout()}><span><Compass size={17} />로그아웃</span><ChevronRight size={16} /></button></div></section></div>;
+  };
 
   let content: ReactNode;
   if (screen === "map") content = renderMapScreen();
@@ -519,6 +567,8 @@ export default function Home() {
   else if (screen === "user-search") content = renderUserSearch();
   else if (screen === "profile") content = renderProfile();
   else if (screen === "public-courses") content = renderPublicCourses();
+  else if (screen === "saved-courses") content = renderSavedCourses();
+  else if (screen === "mypage") content = renderMyPage();
   else content = <div className="route-screen route-home"><ScreenHeader title="Route" right={<button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button>} /><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
   return <div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
