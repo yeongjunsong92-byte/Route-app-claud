@@ -80,6 +80,27 @@ describe("home place search flow", () => {
     expect(container.querySelector(".route-map-sheet")).toBeNull();
   });
 
+  it("keeps map pin selection available across peek, expanded, and hidden sheet states", () => {
+    const { container } = render(<Home />);
+    const marker = () => screen.getAllByRole("button", { name: "성수 식당" })[0];
+    const dragZone = () => container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
+
+    fireEvent.click(marker());
+    expect(screen.getByRole("button", { name: "코스에 추가" })).toBeTruthy();
+
+    fireEvent.pointerDown(dragZone(), { pointerId: 1, clientY: 420 });
+    fireEvent.pointerUp(dragZone(), { pointerId: 1, clientY: 350 });
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-expanded");
+    fireEvent.click(marker());
+    expect(screen.getByRole("button", { name: "코스에 추가" })).toBeTruthy();
+
+    fireEvent.pointerDown(dragZone(), { pointerId: 2, clientY: 420 });
+    fireEvent.pointerUp(dragZone(), { pointerId: 2, clientY: 500 });
+    expect(container.querySelector(".route-map-sheet")).toBeNull();
+    fireEvent.click(marker());
+    expect(screen.getByRole("button", { name: "코스에 추가" })).toBeTruthy();
+  });
+
   it("shows the redesigned travel management page and opens saved places", async () => {
     const user = userEvent.setup();
     render(<Home />);
