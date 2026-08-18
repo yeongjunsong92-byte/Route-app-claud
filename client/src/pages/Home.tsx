@@ -71,11 +71,15 @@ const publicCourse: Course = {
 const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
 
 function MapFallback({ markers = mockPlaces, selectedId, onSelect }: { markers?: Place[]; selectedId?: string; onSelect?: (place: Place) => void }) {
+  const markerPositions = [
+    { top: "27%", left: "31%" }, { top: "42%", left: "53%" }, { top: "58%", right: "23%" }, { top: "66%", left: "24%" },
+    { top: "34%", right: "17%" }, { top: "75%", right: "37%" }, { top: "49%", left: "14%" }, { top: "20%", right: "36%" },
+  ];
   return (
     <div className="route-map-fallback">
       <div className="route-map-water" />
       <div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-map-road road-d" />
-      {markers.map((place, index) => <button key={place.id} className={`route-map-marker marker-${index + 1} ${selectedId === place.id ? "is-selected" : ""}`} onClick={() => onSelect?.(place)} aria-label={place.name}><MapPin size={selectedId === place.id ? 22 : 18} fill="currentColor" /></button>)}
+      {markers.slice(0, 8).map((place, index) => <button key={place.id} style={markerPositions[index]} className={`route-map-marker ${selectedId === place.id ? "is-selected" : ""}`} onClick={() => onSelect?.(place)} aria-label={place.name}><MapPin size={selectedId === place.id ? 22 : 18} fill="currentColor" /></button>)}
       <div className="route-map-attribution">Google Maps preview</div>
     </div>
   );
@@ -241,6 +245,14 @@ export default function Home() {
   const [courseMemos, setCourseMemos] = useState<Record<string, string>>({});
   const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
+  const [livePlaces, setLivePlaces] = useState<Place[]>([]);
+  const [hasLiveSearch, setHasLiveSearch] = useState(false);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [sheetMode, setSheetMode] = useState<"expanded" | "peek" | "hidden">("peek");
+  const mainMapRef = useRef<google.maps.Map | null>(null);
+  const placeMarkerRefs = useRef<google.maps.Marker[]>([]);
+  const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const sheetDragStartRef = useRef<number | null>(null);
   const selectedCourseId = Number(selectedCourse.id);
   const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
   const selectedCourseQuery = trpc.courses.get.useQuery(selectedCourseInput, { enabled: isAuthenticated && screen === "edit-course" && selectedCourseId > 0 });
@@ -250,6 +262,45 @@ export default function Home() {
     const matchesFilter = filter === "전체" || (filter === "맛집" && place.category === "맛집") || place.category === filter;
     return matchesQuery && matchesFilter;
   }), [filter, query]);
+  const mapPlaces = useMemo(() => {
+    const source = hasLiveSearch ? livePlaces : filteredPlaces;
+    return filter === "전체" ? source : source.filter((place) => place.category === filter);
+  }, [filter, filteredPlaces, hasLiveSearch, livePlaces]);
+  const clearMapMarkers = useCallback(() => {
+    placeMarkerRefs.current.forEach((marker) => marker.setMap(null));
+    placeMarkerRefs.current = [];
+  }, []);
+  const syncMapMarkers = useCallback((map: google.maps.Map, places: Place[]) => {
+    if (!window.google?.maps) return;
+    clearMapMarkers();
+    placeMarkerRefs.current = places.map((place, index) => {
+      const pinColor = index % 3 === 0 ? "#e978a5" : "#6351dd";
+      const pinSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg"><path d="M17 1C8.72 1 2 7.47 2 15.45c0 10.54 15 24.55 15 24.55s15-14.01 15-24.55C32 7.47 25.28 1 17 1Z" fill="${pinColor}" stroke="white" stroke-width="2"/><circle cx="17" cy="15.5" r="5" fill="white" fill-opacity=".96"/></svg>`)}`;
+      const marker = new google.maps.Marker({
+        map,
+        position: { lat: place.lat, lng: place.lng },
+        title: place.name,
+        icon: { url: pinSvg, scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
+        zIndex: 10 + index,
+      });
+      marker.addListener("click", () => {
+        setMapPreviewPlace(place);
+        setSheetMode("peek");
+      });
+      return marker;
+    });
+  }, [clearMapMarkers]);
+  const handleMainMapReady = useCallback((map: google.maps.Map) => {
+    mainMapRef.current = map;
+    syncMapMarkers(map, mapPlaces);
+  }, [mapPlaces, syncMapMarkers]);
+  useEffect(() => {
+    if (mainMapRef.current) syncMapMarkers(mainMapRef.current, mapPlaces);
+  }, [mapPlaces, syncMapMarkers]);
+  useEffect(() => () => {
+    clearMapMarkers();
+    currentLocationMarkerRef.current?.setMap(null);
+  }, [clearMapMarkers]);
   const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
   const courseStops = useMemo<RouteStop[]>(() => coursePlaces.slice(0, 8).map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [coursePlaces]);
   const selectedCourseStops = useMemo<RouteStop[]>(() => selectedCourse.items.map((item, index) => {
@@ -323,16 +374,113 @@ export default function Home() {
     setCourseStep(2);
     setScreen("course-create");
   };
-  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} /><div className="route-map-box-fallback"><MapFallback markers={filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? setMapPreviewPlace : undefined} /></div>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => toast.message("현재 위치는 지도 연결 후 표시됩니다.")}><LocateFixed size={18} /></button><button aria-label="지도 필터" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt="" /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating} · 350m</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => addPlaceToCourse(mapPreviewPlace)}><Plus size={15} /> 코스에 추가</button></div></motion.div>}</>}</div>;
+  const categoryFromPlaceTypes = (types?: string[]) => {
+    if (types?.some((type) => ["cafe", "bakery", "coffee_shop"].includes(type))) return "카페";
+    if (types?.some((type) => ["restaurant", "meal_takeaway", "food"].includes(type))) return "맛집";
+    if (types?.some((type) => ["lodging", "hotel"].includes(type))) return "숙소";
+    return "관광지";
+  };
+  const searchPlaces = () => {
+    const keyword = query.trim();
+    if (!keyword) {
+      setHasLiveSearch(false);
+      setLivePlaces([]);
+      setSheetMode("peek");
+      return;
+    }
+    const map = mainMapRef.current;
+    if (!map || !window.google?.maps?.places) {
+      toast.error("지도가 준비된 후 다시 검색해주세요.");
+      return;
+    }
+    setPlacesLoading(true);
+    const service = new google.maps.places.PlacesService(map);
+    service.textSearch({ query: keyword, location: map.getCenter() || { lat: 37.5446, lng: 127.0557 }, radius: 7000 }, (results, status) => {
+      setPlacesLoading(false);
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+        setHasLiveSearch(true);
+        setLivePlaces([]);
+        setSheetMode("expanded");
+        toast.message("검색 결과가 없습니다. 다른 키워드로 검색해보세요.");
+        return;
+      }
+      const normalized = results.slice(0, 12).flatMap((result, index): Place[] => {
+        const lat = result.geometry?.location?.lat();
+        const lng = result.geometry?.location?.lng();
+        if (lat === undefined || lng === undefined) return [];
+        return [{
+          id: result.place_id || `google-place-${index}`,
+          name: result.name || keyword,
+          category: categoryFromPlaceTypes(result.types),
+          address: result.formatted_address || result.vicinity || "주소 정보 없음",
+          image: result.photos?.[0]?.getUrl({ maxWidth: 360, maxHeight: 240 }) || mockPlaces[index % mockPlaces.length].image,
+          description: `${result.name || keyword}의 실제 Google Maps 검색 결과입니다.`,
+          rating: result.rating || 0,
+          reviewCount: result.user_ratings_total || 0,
+          lat,
+          lng,
+          hours: "영업시간은 Google Maps에서 확인",
+          phone: "",
+        }];
+      });
+      setHasLiveSearch(true);
+      setLivePlaces(normalized);
+      setMapPreviewPlace(normalized[0] || null);
+      setSheetMode("expanded");
+      if (normalized.length === 1) map.panTo({ lat: normalized[0].lat, lng: normalized[0].lng });
+      else if (normalized.length > 1) {
+        const bounds = new google.maps.LatLngBounds();
+        normalized.forEach((place) => bounds.extend({ lat: place.lat, lng: place.lng }));
+        map.fitBounds(bounds, 48);
+      }
+    });
+  };
+  const moveToCurrentLocation = () => {
+    const map = mainMapRef.current;
+    if (!map) {
+      toast.message("지도를 불러오는 중입니다.");
+      return;
+    }
+    if (!navigator.geolocation) {
+      toast.error("이 브라우저에서는 현재 위치를 지원하지 않습니다.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const location = { lat: position.coords.latitude, lng: position.coords.longitude };
+      map.panTo(location);
+      map.setZoom(15);
+      currentLocationMarkerRef.current?.setMap(null);
+      currentLocationMarkerRef.current = new google.maps.Marker({
+        map,
+        position: location,
+        title: "현재 위치",
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#2f80ed", fillOpacity: 1, strokeColor: "#ffffff", strokeOpacity: 1, strokeWeight: 3, scale: 9 },
+        zIndex: 99,
+      });
+      toast.success("현재 위치로 이동했습니다.");
+    }, () => toast.error("현재 위치 권한을 허용해주세요."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  };
+  const handleSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    sheetDragStartRef.current = event.clientY;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const handleSheetPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (sheetDragStartRef.current === null) return;
+    const distance = event.clientY - sheetDragStartRef.current;
+    sheetDragStartRef.current = null;
+    if (distance < -40) setSheetMode("expanded");
+    else if (distance > 55) setSheetMode((mode) => mode === "expanded" ? "peek" : "hidden");
+  };
+  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? mapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={moveToCurrentLocation}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt="" /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · 350m</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => addPlaceToCourse(mapPreviewPlace)}><Plus size={15} /> 코스에 추가</button></div></motion.div>}</>}</div>;
 
-  const renderMapScreen = () => <div className="route-screen route-map-screen">
+  const renderMapScreen = () => <div className={`route-screen route-map-screen sheet-${sheetMode}`}>
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    <div className="route-map-sheet"><div className="route-sheet-handle" /><div className="route-sheet-title"><strong>주변 장소</strong><span>{filteredPlaces.length}곳</span></div>{filteredPlaces.length ? filteredPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>필터를 바꾸거나 다른 장소를 찾아보세요.</span></div>}</div>
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : "주변 장소"}</strong><span>{mapPlaces.length}곳</span></div>{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : mapPlaces.length ? (sheetMode === "expanded" ? mapPlaces : mapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 키워드 또는 카테고리로 검색해보세요.</span></div>}</div>}
   </div>;
 
-  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="성수 맛집" /><button onClick={() => setQuery("")}><X size={15} /></button></div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true)}<div className="route-search-list">{filteredPlaces.map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
+  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={searchPlaces}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); }}><X size={15} /></button></div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true, true)}<div className="route-search-list">{(hasLiveSearch ? mapPlaces : filteredPlaces).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
   const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => addPlaceToCourse(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 

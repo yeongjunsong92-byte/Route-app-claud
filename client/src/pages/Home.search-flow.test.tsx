@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("@/_core/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/const", () => ({ startLogin: vi.fn() }));
-vi.mock("@/components/Map", () => ({ MapView: () => <div data-testid="map-view" /> }));
+vi.mock("@/components/Map", () => ({ MapView: ({ fallback }: { fallback?: React.ReactNode }) => <div data-testid="map-view">{fallback}</div> }));
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
@@ -60,5 +60,23 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "코스에 추가" }));
     expect(screen.getByRole("heading", { name: "코스 만들기" })).toBeTruthy();
+  });
+
+  it("expands and fully collapses the nearby-place sheet with vertical drags", () => {
+    const { container } = render(<Home />);
+    const dragZone = container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
+
+    fireEvent.pointerDown(dragZone, { pointerId: 1, clientY: 420 });
+    fireEvent.pointerUp(dragZone, { pointerId: 1, clientY: 350 });
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-expanded");
+
+    fireEvent.pointerDown(dragZone, { pointerId: 2, clientY: 350 });
+    fireEvent.pointerUp(dragZone, { pointerId: 2, clientY: 420 });
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
+
+    const secondDragZone = container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
+    fireEvent.pointerDown(secondDragZone, { pointerId: 3, clientY: 420 });
+    fireEvent.pointerUp(secondDragZone, { pointerId: 3, clientY: 500 });
+    expect(container.querySelector(".route-map-sheet")).toBeNull();
   });
 });
