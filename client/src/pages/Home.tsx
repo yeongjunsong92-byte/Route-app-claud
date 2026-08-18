@@ -10,12 +10,14 @@ import {
   Compass,
   GripVertical,
   Heart,
+  LocateFixed,
   MapPin,
   MoreHorizontal,
   Pencil,
   Plus,
   Search,
   Share2,
+  SlidersHorizontal,
   User,
   Users,
   X,
@@ -68,12 +70,12 @@ const publicCourse: Course = {
 
 const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
 
-function MapFallback({ markers = mockPlaces }: { markers?: Place[] }) {
+function MapFallback({ markers = mockPlaces, selectedId, onSelect }: { markers?: Place[]; selectedId?: string; onSelect?: (place: Place) => void }) {
   return (
     <div className="route-map-fallback">
       <div className="route-map-water" />
       <div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-map-road road-d" />
-      {markers.map((place, index) => <button key={place.id} className={`route-map-marker marker-${index + 1}`} onClick={() => undefined} aria-label={place.name}><MapPin size={18} fill="currentColor" /></button>)}
+      {markers.map((place, index) => <button key={place.id} className={`route-map-marker marker-${index + 1} ${selectedId === place.id ? "is-selected" : ""}`} onClick={() => onSelect?.(place)} aria-label={place.name}><MapPin size={selectedId === place.id ? 22 : 18} fill="currentColor" /></button>)}
       <div className="route-map-attribution">Google Maps preview</div>
     </div>
   );
@@ -122,24 +124,73 @@ function formatMinutes(minutes: number) {
 }
 
 function RouteMapFallback({ stops }: { stops: RouteStop[] }) {
-  return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}<div className="route-map-attribution">Route route preview</div></div>;
+  const segmentMinutes = stops.length > 1 ? Math.max(5, Math.round(estimateRouteMinutes(stops) / (stops.length - 1))) : 0;
+  return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}{stops.slice(1).map((stop, index) => <span className={`route-route-time-fallback time-${index + 1}`} key={`${stop.name}-time`}>{segmentMinutes}분</span>)}<div className="route-map-attribution">Route route preview</div></div>;
 }
 
 function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compact?: boolean }) {
   const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const routeDecorationRefs = useRef<google.maps.Marker[]>([]);
+  const routeFallbackLineRef = useRef<google.maps.Polyline | null>(null);
   const [duration, setDuration] = useState(0);
   const [distance, setDistance] = useState("");
   const [isRealRoute, setIsRealRoute] = useState(false);
   const fallbackMinutes = useMemo(() => estimateRouteMinutes(stops), [stops]);
+  const clearRouteDecorations = useCallback(() => {
+    routeDecorationRefs.current.forEach((marker) => marker.setMap(null));
+    routeDecorationRefs.current = [];
+    routeFallbackLineRef.current?.setMap(null);
+    routeFallbackLineRef.current = null;
+  }, []);
+  const renderRouteDecorations = useCallback((map: google.maps.Map, legs?: google.maps.DirectionsLeg[]) => {
+    clearRouteDecorations();
+    const decorations: google.maps.Marker[] = [];
+    stops.forEach((stop, index) => {
+      decorations.push(new google.maps.Marker({
+        map,
+        position: { lat: stop.lat, lng: stop.lng },
+        label: { text: String(index + 1), color: "#ffffff", fontSize: "12px", fontWeight: "700" },
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#6351dd", fillOpacity: 1, strokeColor: "#ffffff", strokeOpacity: 1, strokeWeight: 2, scale: 14 },
+        zIndex: 20 + index,
+      }));
+    });
+    if (!legs?.length && stops.length > 1) {
+      routeFallbackLineRef.current = new google.maps.Polyline({
+        map,
+        path: stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+        strokeColor: "#6351dd",
+        strokeOpacity: 0.9,
+        strokeWeight: 4,
+      });
+    }
+    stops.slice(1).forEach((stop, index) => {
+      const leg = legs?.[index];
+      const previousStop = stops[index];
+      const midpoint = leg ? { lat: (leg.start_location.lat() + leg.end_location.lat()) / 2, lng: (leg.start_location.lng() + leg.end_location.lng()) / 2 } : { lat: (previousStop.lat + stop.lat) / 2, lng: (previousStop.lng + stop.lng) / 2 };
+      const minutes = leg?.duration?.value ? Math.max(1, Math.round(leg.duration.value / 60)) : estimateRouteMinutes([previousStop, stop]);
+      decorations.push(new google.maps.Marker({
+        map,
+        position: midpoint,
+        label: { text: `${minutes}분`, color: "#6351dd", fontSize: "10px", fontWeight: "700" },
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#ffffff", fillOpacity: 0.97, strokeColor: "#e8e4f5", strokeOpacity: 1, strokeWeight: 1, scale: 19 },
+        clickable: false,
+        zIndex: 10 + index,
+      }));
+    });
+    routeDecorationRefs.current = decorations;
+  }, [clearRouteDecorations, stops]);
   const handleMapReady = useCallback((map: google.maps.Map) => {
     if (stops.length < 2 || !window.google?.maps) return;
     rendererRef.current?.setMap(null);
+    clearRouteDecorations();
+    setIsRealRoute(false);
     const renderer = new google.maps.DirectionsRenderer({
       map,
-      suppressMarkers: false,
+      suppressMarkers: true,
       polylineOptions: { strokeColor: "#6351dd", strokeOpacity: 0.9, strokeWeight: 4 },
     });
     rendererRef.current = renderer;
+    renderRouteDecorations(map);
     const service = new google.maps.DirectionsService();
     service.route({
       origin: { lat: stops[0].lat, lng: stops[0].lng },
@@ -151,12 +202,16 @@ function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compac
       if (status !== "OK" || !result?.routes[0]) return;
       renderer.setDirections(result);
       const legs = result.routes[0].legs || [];
+      renderRouteDecorations(map, legs);
       setDuration(Math.round(legs.reduce((total, leg) => total + (leg.duration?.value || 0), 0) / 60));
       setDistance(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000 < 10 ? `${(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000).toFixed(1)}km` : `${Math.round(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000)}km`);
       setIsRealRoute(true);
     });
-  }, [stops]);
-  useEffect(() => () => rendererRef.current?.setMap(null), []);
+  }, [clearRouteDecorations, renderRouteDecorations, stops]);
+  useEffect(() => () => {
+    rendererRef.current?.setMap(null);
+    clearRouteDecorations();
+  }, [clearRouteDecorations]);
 
   return <div className={`route-course-route-wrap ${compact ? "compact" : ""}`}><div className="route-course-route-map"><MapView className="route-real-map" initialCenter={stops[0] ? { lat: stops[0].lat, lng: stops[0].lng } : undefined} initialZoom={13} onMapReady={handleMapReady} fallback={<RouteMapFallback stops={stops} />} /></div><div className="route-route-meta"><span><MapPin size={13} /> {stops.length}곳 연결</span><span><Clock3 size={13} /> {formatMinutes(duration || fallbackMinutes)}</span>{distance && <span>{distance}</span>}{!isRealRoute && <small>지도 연결 후 실제 경로로 계산됩니다.</small>}</div></div>;
 }
@@ -175,6 +230,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("전체");
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
+  const [mapPreviewPlace, setMapPreviewPlace] = useState<Place | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course>(publicCourse);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
   const [courseStep, setCourseStep] = useState(1);
@@ -262,18 +318,23 @@ export default function Home() {
       return next;
     });
   };
-  const renderMap = (compact = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} /><div className="route-map-box-fallback"><MapFallback markers={filteredPlaces} /></div></div>;
+  const addPlaceToCourse = (place: Place) => {
+    setCoursePlaces((items) => items.some((item) => item.id === place.id) ? items : [...items, place]);
+    setCourseStep(2);
+    setScreen("course-create");
+  };
+  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} /><div className="route-map-box-fallback"><MapFallback markers={filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? setMapPreviewPlace : undefined} /></div>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => toast.message("현재 위치는 지도 연결 후 표시됩니다.")}><LocateFixed size={18} /></button><button aria-label="지도 필터" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt="" /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating} · 350m</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => addPlaceToCourse(mapPreviewPlace)}><Plus size={15} /> 코스에 추가</button></div></motion.div>}</>}</div>;
 
   const renderMapScreen = () => <div className="route-screen route-map-screen">
-    <div className="route-map-search" onClick={() => setScreen("search")}><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="장소를 검색해보세요" /><ChevronRight size={14} /></div>
+    <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>
-    {renderMap()}
+    {renderMap(false, true)}
     <div className="route-map-sheet"><div className="route-sheet-handle" /><div className="route-sheet-title"><strong>주변 장소</strong><span>{filteredPlaces.length}곳</span></div>{filteredPlaces.length ? filteredPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>필터를 바꾸거나 다른 장소를 찾아보세요.</span></div>}</div>
   </div>;
 
   const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="성수 맛집" /><button onClick={() => setQuery("")}><X size={15} /></button></div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true)}<div className="route-search-list">{filteredPlaces.map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
-  const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => { setCoursePlaces((items) => items.some((item) => item.id === selectedPlace.id) ? items : [...items, selectedPlace]); setCourseStep(2); setScreen("course-create"); }}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
+  const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => addPlaceToCourse(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 
   const renderSaveSheet = () => <div className="route-overlay" onClick={() => setSaveSheetOpen(false)}><div className="route-save-sheet" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><h3>다음 중 선택하세요</h3><button onClick={savePlace}><Bookmark size={20} /><span><strong>내 장소에 저장</strong><small>나중에 다시 확인할 장소를 저장합니다.</small></span><ChevronRight size={16} /></button><button onClick={() => { setSaveSheetOpen(false); setCourseStep(1); setScreen("course-create"); }}><Plus size={20} /><span><strong>새 코스 만들기</strong><small>이 장소를 포함한 새 코스를 만듭니다.</small></span><ChevronRight size={16} /></button><button onClick={() => { setSaveSheetOpen(false); setScreen("my-courses"); }}><Bookmark size={20} /><span><strong>기존 코스에 추가</strong><small>이미 만든 코스에 장소를 추가합니다.</small></span><ChevronRight size={16} /></button><button className="cancel" onClick={() => setSaveSheetOpen(false)}>취소</button></div></div>;
 

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -37,6 +37,8 @@ vi.mock("@/lib/trpc", () => {
 
 import Home from "./Home";
 
+afterEach(() => cleanup());
+
 describe("home place search flow", () => {
   it("opens the map search screen when the home search bar is clicked", async () => {
     const user = userEvent.setup();
@@ -47,5 +49,16 @@ describe("home place search flow", () => {
 
     expect(screen.getByRole("heading", { name: "장소 검색" })).toBeTruthy();
     expect(screen.getByPlaceholderText("성수 맛집")).toBeTruthy();
+  });
+
+  it("shows the selected-place preview from a map marker and opens course creation", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    expect(screen.getByRole("button", { name: "코스에 추가" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
+    expect(screen.getByRole("heading", { name: "코스 만들기" })).toBeTruthy();
   });
 });
