@@ -13,6 +13,12 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("setIsLocationPermissionHelpOpen(true)");
     expect(homeSource).toContain("RECENT_SEARCHES_KEY");
     expect(homeSource).toContain("route-recent-searches");
+    expect(homeSource).toContain("getUrl({ maxWidth: 720, maxHeight: 480 })");
+    expect(homeSource).toContain("getPlacePhotos(selectedPlace)");
+    expect(homeSource).toContain("removeRecentSearch");
+    expect(homeSource).toContain("clearRecentSearches");
+    expect(homeSource).toContain("addSavedPlaceToCurrentCourse");
+    expect(homeSource).toContain("route-map-current-course-add");
     expect(homeSource).toContain("route-sheet-place-glance");
     expect(homeSource).toContain("mapPreviewPlace.hours");
     expect(homeSource).toContain('setSheetMode("expanded")');

@@ -32,9 +32,10 @@ vi.mock("framer-motion", () => ({
 vi.mock("@/lib/trpc", () => {
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false });
   const query = () => ({ data: [], isLoading: false, isError: false });
+  const savedPlacesQuery = () => ({ data: [{ id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 }], isLoading: false, isError: false });
   return {
     trpc: {
-      places: { toggleSaved: { useMutation: mutation }, saved: { useQuery: query } },
+      places: { toggleSaved: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, mine: { useQuery: query }, saved: { useQuery: query }, get: { useQuery: query } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() } } }),
@@ -151,8 +152,32 @@ describe("home place search flow", () => {
 
     await user.click(screen.getAllByRole("button", { name: "장소 검색" })[0]);
     expect(screen.getByRole("heading", { name: "최근 검색어" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /성수 카페/ }));
+    await user.click(screen.getByRole("button", { name: /^성수 카페$/ }));
     expect((screen.getByPlaceholderText("성수 맛집") as HTMLInputElement).value).toBe("성수 카페");
+  });
+
+  it("removes individual and all recent searches while syncing local storage", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("route-recent-place-searches", JSON.stringify(["성수 카페", "서울숲"]));
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "장소 검색" })[0]);
+    await user.click(screen.getByRole("button", { name: "성수 카페 삭제" }));
+    expect(JSON.parse(window.localStorage.getItem("route-recent-place-searches") || "[]")).toEqual(["서울숲"]);
+    expect(screen.queryByRole("button", { name: /^성수 카페$/ })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "최근 검색어 전체 삭제" }));
+    expect(window.localStorage.getItem("route-recent-place-searches")).toBe("[]");
+    expect(screen.queryByRole("heading", { name: "최근 검색어" })).toBeNull();
+  });
+
+  it("adds a selected saved place to the current course without leaving the map", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "테스트 저장 장소" }));
+    await user.click(screen.getByRole("button", { name: "현재 코스에 담기" }));
+    expect(screen.getByRole("button", { name: "현재 코스에 담김" })).toBeTruthy();
   });
 
   it("reveals operating hours and photos for a selected place in the expanded sheet", () => {
