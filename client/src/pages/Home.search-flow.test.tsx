@@ -300,7 +300,7 @@ describe("home place search flow", () => {
     expect(screen.getByText("Day 2 · 1시간 30분")).toBeTruthy();
   });
 
-  it("reorders added course places with a mobile pointer drag", async () => {
+  it("recalculates travel time and applies a route recommendation after a mobile create-flow drag", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
@@ -309,20 +309,24 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "다음" }));
 
     const rows = Array.from(container.querySelectorAll<HTMLElement>(".route-draggable-place"));
-    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows.length).toBeGreaterThanOrEqual(4);
     expect(rows[0].textContent).toContain("성수 식당");
-    const targetRow = rows[2];
+    const targetRow = rows[1];
     const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(targetRow);
 
-    fireEvent.pointerDown(rows[0].querySelector(".route-drag-handle") as SVGElement, { pointerId: 17, clientX: 120, clientY: 380 });
+    fireEvent.pointerDown(rows[3].querySelector(".route-drag-handle") as SVGElement, { pointerId: 17, clientX: 120, clientY: 380 });
     fireEvent.pointerMove(document, { pointerId: 17, clientX: 120, clientY: 500 });
     fireEvent.pointerUp(document, { pointerId: 17, clientX: 120, clientY: 500 });
 
-    expect(container.querySelectorAll<HTMLElement>(".route-draggable-place")[2].textContent).toContain("성수 식당");
+    expect(screen.getAllByRole("region", { name: "순서 변경에 따른 예상 이동시간" }).length).toBeGreaterThan(0);
+    const applyButtons = screen.getAllByRole("button", { name: /추천 순서 적용/ });
+    expect(applyButtons.length).toBeGreaterThan(0);
+    await user.click(applyButtons[0]);
+    expect(screen.getAllByText("현재 순서가 추천 동선과 같습니다.").length).toBeGreaterThan(0);
     elementFromPoint.mockRestore();
   });
 
-  it("reorders saved course places from the edit screen with a mobile pointer drag", async () => {
+  it("recalculates travel time and applies a route recommendation after a mobile edit-flow drag", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
@@ -331,12 +335,16 @@ describe("home place search flow", () => {
     await screen.findByText("일정 장소 3곳");
 
     const rows = Array.from(container.querySelectorAll<HTMLElement>(".route-edit-place-row"));
-    const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(rows[2]);
-    fireEvent.pointerDown(rows[0].querySelector("b") as HTMLElement, { pointerId: 19, clientX: 120, clientY: 380 });
+    const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(rows[1]);
+    fireEvent.pointerDown(rows[2].querySelector("b") as HTMLElement, { pointerId: 19, clientX: 120, clientY: 380 });
     fireEvent.pointerMove(document, { pointerId: 19, clientX: 120, clientY: 500 });
     fireEvent.pointerUp(document, { pointerId: 19, clientX: 120, clientY: 500 });
 
-    expect(container.querySelectorAll<HTMLElement>(".route-edit-place-row")[2].textContent).toContain("성수 식당");
+    expect(screen.getAllByRole("region", { name: "순서 변경에 따른 예상 이동시간" }).length).toBeGreaterThan(0);
+    const applyButtons = screen.getAllByRole("button", { name: /추천 순서 적용/ });
+    expect(applyButtons.length).toBeGreaterThan(0);
+    await user.click(applyButtons[0]);
+    expect(screen.getAllByText("현재 순서가 추천 동선과 같습니다.").length).toBeGreaterThan(0);
     elementFromPoint.mockRestore();
   });
 

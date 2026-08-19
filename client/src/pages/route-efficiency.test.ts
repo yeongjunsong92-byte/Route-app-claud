@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { estimateRouteSegments, getRouteEfficiencyWarnings } from "./Home";
+import { estimateRouteSegments, getOptimalRouteOrder, getRouteDistanceMeters, getRouteEfficiencyWarnings } from "./Home";
 
 describe("route efficiency guidance", () => {
   it("calculates an expected time and distance for each adjacent stop", () => {
@@ -36,5 +36,44 @@ describe("route efficiency guidance", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toContain("이동 수단");
+  });
+
+  it("recalculates adjacent travel legs when the stop order changes", () => {
+    const before = [
+      { name: "출발", lat: 37.5, lng: 127.0 },
+      { name: "우회 장소", lat: 37.56, lng: 127.0 },
+      { name: "도착", lat: 37.5, lng: 127.01 },
+    ];
+    const after = [before[0], before[2], before[1]];
+
+    expect(estimateRouteSegments(before)[0].to).toBe("우회 장소");
+    expect(estimateRouteSegments(after)[0].to).toBe("도착");
+    expect(getRouteDistanceMeters(after)).not.toBe(getRouteDistanceMeters(before));
+  });
+
+  it("keeps every travel leg when a course contains more than eight stops", () => {
+    const stops = Array.from({ length: 10 }, (_, index) => ({
+      name: `장소 ${index + 1}`,
+      lat: 37.5 + index * 0.001,
+      lng: 127 + index * 0.001,
+    }));
+
+    const segments = estimateRouteSegments(stops);
+    expect(segments).toHaveLength(9);
+    expect(segments.at(-1)?.from).toBe("장소 9");
+    expect(segments.at(-1)?.to).toBe("장소 10");
+  });
+
+  it("recommends the shortest order while preserving the first stop", () => {
+    const places = [
+      { name: "출발", lat: 37.5, lng: 127.0 },
+      { name: "우회 장소", lat: 37.56, lng: 127.0 },
+      { name: "도착", lat: 37.5, lng: 127.01 },
+    ];
+    const recommended = getOptimalRouteOrder(places);
+
+    expect(recommended[0].name).toBe("출발");
+    expect(recommended.map((place) => place.name)).toEqual(["출발", "도착", "우회 장소"]);
+    expect(getRouteDistanceMeters(recommended)).toBeLessThan(getRouteDistanceMeters(places));
   });
 });
