@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { estimateRouteSegments, getOptimalRouteOrder, getRouteDistanceMeters, getRouteEfficiencyWarnings } from "./Home";
+import { estimateRouteSegments, getOptimalRouteOrder, getRouteDistanceMeters, getRouteEfficiencyWarnings, getRouteTravelMinutes } from "./Home";
 
 describe("route efficiency guidance", () => {
   it("calculates an expected time and distance for each adjacent stop", () => {
@@ -14,6 +14,20 @@ describe("route efficiency guidance", () => {
     expect(segments[0].to).toBe("다음 장소");
     expect(segments[0].minutes).toBeGreaterThanOrEqual(5);
     expect(segments[0].distanceMeters).toBeGreaterThan(0);
+  });
+
+  it("adjusts estimated travel time for driving, transit, and walking", () => {
+    const stops = [
+      { name: "출발", lat: 37.5, lng: 127.0 },
+      { name: "도착", lat: 37.55, lng: 127.0 },
+    ];
+
+    const driving = estimateRouteSegments(stops, "driving")[0].minutes;
+    const transit = estimateRouteSegments(stops, "transit")[0].minutes;
+    const walking = estimateRouteSegments(stops, "walking")[0].minutes;
+
+    expect(driving).toBeLessThan(transit);
+    expect(transit).toBeLessThan(walking);
   });
 
   it("warns when an intermediate stop creates a meaningful detour", () => {
@@ -75,5 +89,45 @@ describe("route efficiency guidance", () => {
     expect(recommended[0].name).toBe("출발");
     expect(recommended.map((place) => place.name)).toEqual(["출발", "도착", "우회 장소"]);
     expect(getRouteDistanceMeters(recommended)).toBeLessThan(getRouteDistanceMeters(places));
+  });
+
+  it("recalculates optimized travel time using the selected travel mode", () => {
+    const places = [
+      { name: "출발", lat: 37.5, lng: 127.0 },
+      { name: "북쪽", lat: 37.55, lng: 127.0 },
+      { name: "동쪽", lat: 37.5, lng: 127.06 },
+      { name: "중간", lat: 37.53, lng: 127.03 },
+    ];
+    const drivingRecommendation = getOptimalRouteOrder(places, "driving");
+    const transitRecommendation = getOptimalRouteOrder(places, "transit");
+    const walkingRecommendation = getOptimalRouteOrder(places, "walking");
+
+    expect(getRouteTravelMinutes(drivingRecommendation, "driving")).toBeLessThanOrEqual(getRouteTravelMinutes(places, "driving"));
+    expect(getRouteTravelMinutes(transitRecommendation, "transit")).toBeLessThanOrEqual(getRouteTravelMinutes(places, "transit"));
+    expect(getRouteTravelMinutes(walkingRecommendation, "walking")).toBeLessThanOrEqual(getRouteTravelMinutes(places, "walking"));
+    expect(getRouteTravelMinutes(drivingRecommendation, "driving")).not.toBe(getRouteTravelMinutes(walkingRecommendation, "walking"));
+  });
+
+  it("can recommend a different order for driving and walking", () => {
+    const places = [
+      { name: "출발", lat: 37.5, lng: 127.0 },
+      { name: "대각선 장소", lat: 37.522, lng: 127.022 },
+      { name: "직선 장소", lat: 37.529, lng: 127.0 },
+    ];
+
+    expect(getOptimalRouteOrder(places, "walking").map((place) => place.name)).toEqual(["출발", "대각선 장소", "직선 장소"]);
+    expect(getOptimalRouteOrder(places, "driving").map((place) => place.name)).toEqual(["출발", "직선 장소", "대각선 장소"]);
+  });
+
+  it("changes the recommended order for the default Seongsu course when the mode changes", () => {
+    const places = [
+      { name: "성수 식당", lat: 37.5446, lng: 127.0557 },
+      { name: "오븐 성수", lat: 37.545, lng: 127.0565 },
+      { name: "성수동 스테이크", lat: 37.5435, lng: 127.0582 },
+      { name: "서울숲", lat: 37.5447, lng: 127.0374 },
+    ];
+
+    expect(getOptimalRouteOrder(places, "walking").map((place) => place.name)).toEqual(["성수 식당", "오븐 성수", "성수동 스테이크", "서울숲"]);
+    expect(getOptimalRouteOrder(places, "driving").map((place) => place.name)).toEqual(["성수 식당", "성수동 스테이크", "오븐 성수", "서울숲"]);
   });
 });

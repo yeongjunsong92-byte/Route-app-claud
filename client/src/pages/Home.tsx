@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowUpDown,
   Bookmark,
+  CarFront,
   Calendar,
   ChevronDown,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Footprints,
   GripVertical,
   Heart,
   LocateFixed,
@@ -25,6 +27,7 @@ import {
   Search,
   Share2,
   SlidersHorizontal,
+  TrainFront,
   User,
   Users,
   WandSparkles,
@@ -40,8 +43,9 @@ import { trpc } from "@/lib/trpc";
 import { getScheduleWarnings } from "@/lib/courseSchedule";
 import { toast } from "sonner";
 
-type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "saved-courses" | "edit-course" | "active-course";
+type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "place-navigation" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "saved-courses" | "edit-course" | "active-course";
 type Tab = "home" | "map" | "courses" | "friends" | "mypage";
+export type TravelMode = "driving" | "transit" | "walking";
 
 type Place = {
   id: string;
@@ -85,6 +89,12 @@ const publicCourse: Course = {
 const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
 const RECENT_SEARCHES_KEY = "route-recent-place-searches";
 const DEFAULT_MAP_CENTER = { lat: 37.5446, lng: 127.0557 };
+const travelModeMeta: Record<TravelMode, { label: string; summary: string; speedKmh: number; googleMode: keyof typeof google.maps.TravelMode; icon: typeof CarFront }> = {
+  driving: { label: "자동차", summary: "차량 이동", speedKmh: 25, googleMode: "DRIVING", icon: CarFront },
+  transit: { label: "대중교통", summary: "대중교통 예상", speedKmh: 18, googleMode: "TRANSIT", icon: TrainFront },
+  walking: { label: "도보", summary: "도보 이동", speedKmh: 4.5, googleMode: "WALKING", icon: Footprints },
+};
+const TravelModeContext = createContext<TravelMode>("driving");
 
 function getPlacePhotos(place: Place) {
   return place.photos?.length ? place.photos : [place.image];
@@ -105,6 +115,26 @@ function formatDistance(meters: number) {
 
 function naverMapSearchUrl(place: Place) {
   return `https://map.naver.com/p/search/${encodeURIComponent(`${place.name} ${place.address}`)}`;
+}
+
+function googleNavigationUrl(place: Place, mode: TravelMode, origin?: { lat: number; lng: number } | null) {
+  const params = new URLSearchParams({ api: "1", destination: `${place.lat},${place.lng}`, travelmode: mode === "driving" ? "driving" : mode === "transit" ? "transit" : "walking", dir_action: "navigate" });
+  if (origin) params.set("origin", `${origin.lat},${origin.lng}`);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function naverNavigationUrl(place: Place, origin?: { lat: number; lng: number } | null) {
+  const params = new URLSearchParams({ dlat: String(place.lat), dlng: String(place.lng), dname: place.name, appname: "route.manus" });
+  if (origin) {
+    params.set("slat", String(origin.lat));
+    params.set("slng", String(origin.lng));
+    params.set("sname", "현재 위치");
+  }
+  return `nmap://navigation?${params.toString()}`;
+}
+
+function kakaoNavigationUrl(place: Place) {
+  return `https://map.kakao.com/link/to/${encodeURIComponent(place.name)},${place.lat},${place.lng}`;
 }
 
 const courseStatusLabel: Record<CourseStatus, string> = { planned: "예정", active: "진행 중", completed: "완료" };
@@ -170,34 +200,51 @@ function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => 
 }
 
 function PlaceRow({ place, onClick, onSave, distanceLabel = "350m" }: { place: Place; onClick: () => void; onSave: () => void; distanceLabel?: string }) {
-  return <button className="route-place-row" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>★ {place.rating} ({place.reviewCount}) · {place.category}</small><em>{place.address}</em></span><span className="route-place-distance">{distanceLabel}</span><span className="route-place-save" onClick={(event) => { event.stopPropagation(); onSave(); }}><Bookmark size={16} /></span></button>;
+  const dispatchNavigation = (event: React.MouseEvent | React.KeyboardEvent) => {
+    event.stopPropagation();
+    window.dispatchEvent(new CustomEvent<Place>("route:navigate-place", { detail: place }));
+  };
+  return <button className="route-place-row" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>★ {place.rating} ({place.reviewCount}) · {place.category}</small><em>{place.address}</em></span><span className="route-place-distance">{distanceLabel}</span><span className="route-place-navigate" role="button" tabIndex={0} aria-label={`${place.name} 길찾기`} onClick={dispatchNavigation} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") dispatchNavigation(event); }}><Navigation size={15} /></span><span className="route-place-save" onClick={(event) => { event.stopPropagation(); onSave(); }}><Bookmark size={16} /></span></button>;
 }
 
 function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
 
 type RouteStop = { name: string; lat: number; lng: number };
 
-function estimateRouteMinutes(stops: RouteStop[]) {
-  if (stops.length < 2) return 0;
-  let kilometers = 0;
-  for (let index = 1; index < stops.length; index += 1) {
-    const previous = stops[index - 1];
-    const current = stops[index];
-    const latitude = ((previous.lat + current.lat) / 2) * (Math.PI / 180);
-    const deltaLat = (current.lat - previous.lat) * 111;
-    const deltaLng = (current.lng - previous.lng) * 111 * Math.cos(latitude);
-    kilometers += Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng);
-  }
-  return Math.max(5, Math.round((kilometers / 25) * 60));
-}
-
 type RouteSegment = { from: string; to: string; minutes: number; distanceMeters: number };
 
-export function estimateRouteSegments(stops: RouteStop[]): RouteSegment[] {
+function getModeRouteDistanceMeters(from: RouteStop, to: RouteStop, mode: TravelMode) {
+  const directDistance = distanceInMeters(from, to);
+  if (mode === "walking") return directDistance;
+  const latitude = ((from.lat + to.lat) / 2) * (Math.PI / 180);
+  const northSouthMeters = Math.abs(to.lat - from.lat) * 111000;
+  const eastWestMeters = Math.abs(to.lng - from.lng) * 111000 * Math.cos(latitude);
+  const cityGridMeters = northSouthMeters + eastWestMeters;
+  return Math.max(directDistance, Math.round(cityGridMeters * (mode === "driving" ? 1.12 : 1.04)));
+}
+
+function getModeSegmentMinutes(from: RouteStop, to: RouteStop, mode: TravelMode) {
+  const modeDistance = getModeRouteDistanceMeters(from, to, mode);
+  return Math.max(mode === "walking" ? 1 : 5, Math.round((modeDistance / 1000 / travelModeMeta[mode].speedKmh) * 60));
+}
+
+function getModeSegmentTravelCost(from: RouteStop, to: RouteStop, mode: TravelMode) {
+  return (getModeRouteDistanceMeters(from, to, mode) / 1000 / travelModeMeta[mode].speedKmh) * 60;
+}
+
+function getRouteTravelCost(stops: RouteStop[], mode: TravelMode) {
+  return stops.slice(1).reduce((total, stop, index) => total + getModeSegmentTravelCost(stops[index], stop, mode), 0);
+}
+
+function estimateRouteMinutes(stops: RouteStop[], mode: TravelMode = "driving") {
+  return stops.slice(1).reduce((total, stop, index) => total + getModeSegmentMinutes(stops[index], stop, mode), 0);
+}
+
+export function estimateRouteSegments(stops: RouteStop[], mode: TravelMode = "driving"): RouteSegment[] {
   return stops.slice(1).map((stop, index) => {
     const previous = stops[index];
     const distanceMeters = distanceInMeters(previous, stop);
-    return { from: previous.name, to: stop.name, distanceMeters, minutes: Math.max(5, Math.round((distanceMeters / 1000 / 25) * 60)) };
+    return { from: previous.name, to: stop.name, distanceMeters, minutes: getModeSegmentMinutes(previous, stop, mode) };
   });
 }
 
@@ -205,7 +252,11 @@ export function getRouteDistanceMeters(stops: RouteStop[]) {
   return estimateRouteSegments(stops).reduce((total, segment) => total + segment.distanceMeters, 0);
 }
 
-export function getOptimalRouteOrder<T extends RouteStop>(stops: T[]): T[] {
+export function getRouteTravelMinutes(stops: RouteStop[], mode: TravelMode = "driving") {
+  return estimateRouteSegments(stops, mode).reduce((total, segment) => total + segment.minutes, 0);
+}
+
+export function getOptimalRouteOrder<T extends RouteStop>(stops: T[], mode: TravelMode = "driving"): T[] {
   if (stops.length < 3) return [...stops];
   const origin = stops[0];
   const remaining = stops.slice(1);
@@ -214,19 +265,19 @@ export function getOptimalRouteOrder<T extends RouteStop>(stops: T[]): T[] {
     const candidates = [...remaining];
     while (candidates.length) {
       const current = route[route.length - 1];
-      const nextIndex = candidates.reduce((bestIndex, candidate, index) => distanceInMeters(current, candidate) < distanceInMeters(current, candidates[bestIndex]) ? index : bestIndex, 0);
+      const nextIndex = candidates.reduce((bestIndex, candidate, index) => getModeSegmentTravelCost(current, candidate, mode) < getModeSegmentTravelCost(current, candidates[bestIndex], mode) ? index : bestIndex, 0);
       route.push(candidates.splice(nextIndex, 1)[0]);
     }
     return route;
   }
   let bestRoute = [...stops];
-  let bestDistance = getRouteDistanceMeters(bestRoute);
+  let bestDuration = getRouteTravelCost(bestRoute, mode);
   const visit = (route: T[], available: T[]) => {
     if (!available.length) {
-      const candidateDistance = getRouteDistanceMeters(route);
-      if (candidateDistance < bestDistance) {
+      const candidateDuration = getRouteTravelCost(route, mode);
+      if (candidateDuration < bestDuration) {
         bestRoute = [...route];
-        bestDistance = candidateDistance;
+        bestDuration = candidateDuration;
       }
       return;
     }
@@ -236,9 +287,9 @@ export function getOptimalRouteOrder<T extends RouteStop>(stops: T[]): T[] {
   return bestRoute;
 }
 
-export function optimizePlacesByDay(places: Place[], dayByPlace: Record<string, number>) {
+export function optimizePlacesByDay(places: Place[], dayByPlace: Record<string, number>, mode: TravelMode = "driving") {
   const days = Array.from(new Set(places.map((place) => dayByPlace[place.id] || 1))).sort((a, b) => a - b);
-  return days.flatMap((day) => getOptimalRouteOrder(places.filter((place) => (dayByPlace[place.id] || 1) === day)));
+  return days.flatMap((day) => getOptimalRouteOrder(places.filter((place) => (dayByPlace[place.id] || 1) === day), mode));
 }
 
 export function getRouteEfficiencyWarnings(stops: RouteStop[]) {
@@ -283,15 +334,16 @@ function RouteMapFallback({ stops }: { stops: RouteStop[] }) {
   return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}{segments.map((segment, index) => <span className={`route-route-time-fallback time-${index + 1}`} key={`${segment.to}-time`}>{segment.minutes}분</span>)}<div className="route-map-attribution">Route route preview</div></div>;
 }
 
-function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compact?: boolean }) {
+function CourseRouteMap({ stops, compact = false, travelMode: requestedTravelMode }: { stops: RouteStop[]; compact?: boolean; travelMode?: TravelMode }) {
+  const travelMode = requestedTravelMode || useContext(TravelModeContext);
   const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const routeDecorationRefs = useRef<google.maps.Marker[]>([]);
   const routeFallbackLineRef = useRef<google.maps.Polyline | null>(null);
   const [duration, setDuration] = useState(0);
   const [distance, setDistance] = useState("");
   const [isRealRoute, setIsRealRoute] = useState(false);
-  const fallbackMinutes = useMemo(() => estimateRouteMinutes(stops), [stops]);
-  const fallbackSegments = useMemo(() => estimateRouteSegments(stops), [stops]);
+  const fallbackMinutes = useMemo(() => estimateRouteMinutes(stops, travelMode), [stops, travelMode]);
+  const fallbackSegments = useMemo(() => estimateRouteSegments(stops, travelMode), [stops, travelMode]);
   const [segments, setSegments] = useState<RouteSegment[]>(fallbackSegments);
   useEffect(() => setSegments(fallbackSegments), [fallbackSegments]);
   const clearRouteDecorations = useCallback(() => {
@@ -325,7 +377,7 @@ function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compac
       const leg = legs?.[index];
       const previousStop = stops[index];
       const midpoint = leg ? { lat: (leg.start_location.lat() + leg.end_location.lat()) / 2, lng: (leg.start_location.lng() + leg.end_location.lng()) / 2 } : { lat: (previousStop.lat + stop.lat) / 2, lng: (previousStop.lng + stop.lng) / 2 };
-      const minutes = leg?.duration?.value ? Math.max(1, Math.round(leg.duration.value / 60)) : estimateRouteMinutes([previousStop, stop]);
+      const minutes = leg?.duration?.value ? Math.max(1, Math.round(leg.duration.value / 60)) : estimateRouteMinutes([previousStop, stop], travelMode);
       decorations.push(new google.maps.Marker({
         map,
         position: midpoint,
@@ -336,7 +388,7 @@ function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compac
       }));
     });
     routeDecorationRefs.current = decorations;
-  }, [clearRouteDecorations, stops]);
+  }, [clearRouteDecorations, stops, travelMode]);
   const handleMapReady = useCallback((map: google.maps.Map) => {
     if (stops.length < 2 || !window.google?.maps) return;
     rendererRef.current?.setMap(null);
@@ -349,13 +401,13 @@ function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compac
     });
     rendererRef.current = renderer;
     renderRouteDecorations(map);
-    if (stops.length > 25) return;
+    if (stops.length > 25 || (travelMode === "transit" && stops.length > 2)) return;
     const service = new google.maps.DirectionsService();
     service.route({
       origin: { lat: stops[0].lat, lng: stops[0].lng },
       destination: { lat: stops[stops.length - 1].lat, lng: stops[stops.length - 1].lng },
       waypoints: stops.slice(1, -1).map((stop) => ({ location: { lat: stop.lat, lng: stop.lng }, stopover: true })),
-      travelMode: google.maps.TravelMode.DRIVING,
+      travelMode: google.maps.TravelMode[travelModeMeta[travelMode].googleMode],
       optimizeWaypoints: false,
     }, (result, status) => {
       if (status !== "OK" || !result?.routes[0]) return;
@@ -367,13 +419,13 @@ function CourseRouteMap({ stops, compact = false }: { stops: RouteStop[]; compac
       setDistance(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000 < 10 ? `${(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000).toFixed(1)}km` : `${Math.round(legs.reduce((total, leg) => total + (leg.distance?.value || 0), 0) / 1000)}km`);
       setIsRealRoute(true);
     });
-  }, [clearRouteDecorations, fallbackSegments, renderRouteDecorations, stops]);
+  }, [clearRouteDecorations, fallbackSegments, renderRouteDecorations, stops, travelMode]);
   useEffect(() => () => {
     rendererRef.current?.setMap(null);
     clearRouteDecorations();
   }, [clearRouteDecorations]);
 
-  return <div className={`route-course-route-wrap ${compact ? "compact" : ""}`}><div className="route-course-route-map"><MapView className="route-real-map" initialCenter={stops[0] ? { lat: stops[0].lat, lng: stops[0].lng } : undefined} initialZoom={13} onMapReady={handleMapReady} fallback={<RouteMapFallback stops={stops} />} /></div><div className="route-route-meta"><span><MapPin size={13} /> {stops.length}곳 연결</span><span><Clock3 size={13} /> {formatMinutes(duration || fallbackMinutes)}</span>{distance && <span>{distance}</span>}{!isRealRoute && <small>지도 연결 후 실제 경로로 계산됩니다.</small>}</div>{segments.length > 0 && <div className="route-leg-summary" role="region" aria-label="장소 간 예상 이동시간">{segments.map((segment, index) => <div key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</div>}</div>;
+  return <div className={`route-course-route-wrap ${compact ? "compact" : ""}`}><div className="route-course-route-map"><MapView className="route-real-map" initialCenter={stops[0] ? { lat: stops[0].lat, lng: stops[0].lng } : undefined} initialZoom={13} onMapReady={handleMapReady} fallback={<RouteMapFallback stops={stops} />} /></div><div className="route-route-meta"><span><MapPin size={13} /> {stops.length}곳 연결</span><span><Clock3 size={13} /> {formatMinutes(duration || fallbackMinutes)}</span><span>{travelModeMeta[travelMode].label}</span>{distance && <span>{distance}</span>}{!isRealRoute && <small>{travelMode === "transit" && stops.length > 2 ? "대중교통 다중 구간은 예상 경로로 안내합니다." : "지도 연결 후 실제 경로로 계산됩니다."}</small>}</div>{segments.length > 0 && <div className="route-leg-summary" role="region" aria-label="장소 간 예상 이동시간">{segments.map((segment, index) => <div key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</div>}</div>;
 }
 
 export default function Home() {
@@ -395,6 +447,8 @@ export default function Home() {
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
+  const [navigationPlace, setNavigationPlace] = useState<Place | null>(null);
+  const [travelMode, setTravelMode] = useState<TravelMode>("driving");
   const [mapPreviewPlace, setMapPreviewPlace] = useState<Place | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course>(publicCourse);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
@@ -553,13 +607,18 @@ export default function Home() {
   })), [courseDayCount, courseDurations, courseItemDays, coursePlaces]);
   const courseScheduleWarnings = useMemo(() => getScheduleWarnings(coursePlaces, courseTimes), [coursePlaces, courseTimes]);
   const courseStops = useMemo<RouteStop[]>(() => coursePlaces.map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [coursePlaces]);
-  const courseRouteSegments = useMemo(() => estimateRouteSegments(courseStops), [courseStops]);
+  const courseRouteSegments = useMemo(() => estimateRouteSegments(courseStops, travelMode), [courseStops, travelMode]);
   const courseTravelMinutes = useMemo(() => courseRouteSegments.reduce((total, segment) => total + segment.minutes, 0), [courseRouteSegments]);
   const courseTravelDistanceMeters = useMemo(() => courseRouteSegments.reduce((total, segment) => total + segment.distanceMeters, 0), [courseRouteSegments]);
-  const recommendedCoursePlaces = useMemo(() => optimizePlacesByDay(coursePlaces, courseItemDays), [courseItemDays, coursePlaces]);
+  const navigationOrigin = userLocation || DEFAULT_MAP_CENTER;
+  const navigationStops = useMemo<RouteStop[]>(() => navigationPlace ? [{ name: userLocation ? "현재 위치" : "출발 위치 확인 중", lat: navigationOrigin.lat, lng: navigationOrigin.lng }, { name: navigationPlace.name, lat: navigationPlace.lat, lng: navigationPlace.lng }] : [], [navigationOrigin.lat, navigationOrigin.lng, navigationPlace, userLocation]);
+  const navigationSegments = useMemo(() => estimateRouteSegments(navigationStops, travelMode), [navigationStops, travelMode]);
+  const navigationMinutes = useMemo(() => navigationSegments.reduce((total, segment) => total + segment.minutes, 0), [navigationSegments]);
+  const navigationDistanceMeters = useMemo(() => navigationSegments.reduce((total, segment) => total + segment.distanceMeters, 0), [navigationSegments]);
+  const recommendedCoursePlaces = useMemo(() => optimizePlacesByDay(coursePlaces, courseItemDays, travelMode), [courseItemDays, coursePlaces, travelMode]);
   const recommendedCourseStops = useMemo<RouteStop[]>(() => recommendedCoursePlaces.map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [recommendedCoursePlaces]);
   const recommendedTravelDistanceMeters = useMemo(() => getRouteDistanceMeters(recommendedCourseStops), [recommendedCourseStops]);
-  const recommendedTravelMinutes = useMemo(() => estimateRouteSegments(recommendedCourseStops).reduce((total, segment) => total + segment.minutes, 0), [recommendedCourseStops]);
+  const recommendedTravelMinutes = useMemo(() => estimateRouteSegments(recommendedCourseStops, travelMode).reduce((total, segment) => total + segment.minutes, 0), [recommendedCourseStops, travelMode]);
   const routeRecommendationChanged = useMemo(() => recommendedCoursePlaces.some((place, index) => place.id !== coursePlaces[index]?.id), [coursePlaces, recommendedCoursePlaces]);
   const courseDetailItems = useMemo<CourseItem[]>(() => {
     const detailItems = selectedCourseQuery.data?.items as Array<any> | undefined;
@@ -589,6 +648,17 @@ export default function Home() {
   useEffect(() => {
     if (detailDayNumbers.length && !detailDayNumbers.includes(activeDetailDay)) setActiveDetailDay(detailDayNumbers[0]);
   }, [activeDetailDay, detailDayNumbers]);
+  useEffect(() => {
+    const handleNavigatePlace = (event: Event) => {
+      const place = (event as CustomEvent<Place>).detail;
+      if (!place) return;
+      setNavigationPlace(place);
+      setScreen("place-navigation");
+      if (!userLocation) moveToCurrentLocation();
+    };
+    window.addEventListener("route:navigate-place", handleNavigatePlace);
+    return () => window.removeEventListener("route:navigate-place", handleNavigatePlace);
+  }, [userLocation]);
   useEffect(() => {
     const getCourseRows = () => Array.from(document.querySelectorAll<HTMLElement>(".route-draggable-place, .route-edit-place-row"));
     const getCourseRow = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>(".route-draggable-place, .route-edit-place-row") : null;
@@ -692,6 +762,11 @@ export default function Home() {
     });
   };
   const openPlace = (place: Place) => { setGalleryIndex(0); setSelectedPlace(place); setScreen("place-detail"); hydrateGooglePlaceDetails(place); };
+  const openPlaceNavigation = (place: Place) => {
+    setNavigationPlace(place);
+    setScreen("place-navigation");
+    if (!userLocation) moveToCurrentLocation();
+  };
   const openSaveSheet = (place: Place) => { setSelectedPlace(place); setSaveSheetOpen(true); };
   const savePlace = async () => {
     if (!selectedPlace) return;
@@ -1021,10 +1096,11 @@ export default function Home() {
   const renderScheduleWarnings = (warnings = courseScheduleWarnings) => <>{screen === "course-create" && courseStep >= 3 && <><section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>{courseStep === 3 && <section className="route-course-day-planner"><div><span>DAY PLANNING</span><h3>일차와 체류시간</h3></div>{coursePlaces.map((place) => <div key={place.id}><strong>{place.name}</strong>{renderPlanningFields(place)}</div>)}</section>}</>}{warnings.length > 0 && <section className="route-schedule-warnings" aria-label="일정 경고"><div><AlertTriangle size={17} /><span><strong>일정 확인이 필요해요</strong><small>방문 시간과 장소 영업시간을 다시 확인하세요.</small></span></div>{warnings.slice(0, 3).map((warning) => <p key={`${warning.placeId}-${warning.message}`}>{warning.message}</p>)}</section>}</>;
   const renderPlanningFields = (place: Place) => <div className="route-planning-fields"><label>일차<select aria-label={`${place.name} 일차`} value={courseItemDays[place.id] || 1} onChange={(event) => setCourseItemDays((current) => ({ ...current, [place.id]: Number(event.target.value) }))}>{Array.from({ length: courseDayCount }, (_, index) => <option key={index + 1} value={index + 1}>Day {index + 1}</option>)}</select></label><label>체류 시간<select aria-label={`${place.name} 체류 시간`} value={courseDurations[place.id] || "60"} onChange={(event) => setCourseDurations((current) => ({ ...current, [place.id]: event.target.value }))}>{[30, 60, 90, 120, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{formatTotalDuration(minutes)}</option>)}</select></label></div>;
   const renderDurationSummary = () => <><section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>{renderCourseTravelSummary()}{screen === "edit-course" && <><CourseRouteMap key={`edit-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderRouteRecommendation()}</>}</>;
-  const renderCourseTravelSummary = () => coursePlaces.length > 1 ? <section className="route-course-travel-summary" aria-live="polite" aria-label="순서 변경에 따른 예상 이동시간"><div className="route-course-travel-heading"><div><Navigation size={17} /><span><small>현재 순서 예상 이동</small><strong>{formatMinutes(courseTravelMinutes)} · {formatDistance(courseTravelDistanceMeters)}</strong></span></div><small>장소 순서를 바꾸면 즉시 갱신됩니다.</small></div>{courseRouteSegments.map((segment, index) => <div className="route-course-travel-leg" key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</section> : null;
+  const renderTravelModeSelector = () => <section className="route-travel-mode-selector" aria-label="이동 수단 선택"><div><span>TRAVEL MODE</span><strong>이동 수단</strong></div><div role="radiogroup" aria-label="코스 이동 수단">{(Object.keys(travelModeMeta) as TravelMode[]).map((mode) => { const Icon = travelModeMeta[mode].icon; return <button key={mode} role="radio" aria-checked={travelMode === mode} className={travelMode === mode ? "active" : ""} onClick={() => setTravelMode(mode)}><Icon size={15} />{travelModeMeta[mode].label}</button>; })}</div></section>;
+  const renderCourseTravelSummary = () => coursePlaces.length > 1 ? <><>{renderTravelModeSelector()}</><section className="route-course-travel-summary" aria-live="polite" aria-label="순서 변경에 따른 예상 이동시간"><div className="route-course-travel-heading"><div><Navigation size={17} /><span><small>{travelModeMeta[travelMode].summary} · 현재 순서 예상 이동</small><strong>{formatMinutes(courseTravelMinutes)} · {formatDistance(courseTravelDistanceMeters)}</strong></span></div><small>장소 순서를 바꾸면 즉시 갱신됩니다.</small></div>{courseRouteSegments.map((segment, index) => <div className="route-course-travel-leg" key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</section></> : null;
   const renderRouteRecommendation = () => coursePlaces.length > 2 ? <section className="route-optimization-card" aria-label="효율 경로 추천"><div className="route-optimization-heading"><span className="route-optimization-icon"><WandSparkles size={17} /></span><div><span>ROUTE RECOMMENDATION</span><h3>이동이 적은 순서를 추천해요</h3></div></div>{routeRecommendationChanged ? <><p>현재 순서보다 <strong>{formatDistance(Math.max(0, courseTravelDistanceMeters - recommendedTravelDistanceMeters))}</strong>, 약 <strong>{Math.max(0, courseTravelMinutes - recommendedTravelMinutes)}분</strong> 이동을 줄일 수 있어요.</p><div className="route-optimization-order">{recommendedCoursePlaces.map((place, index) => <span key={place.id}><b>{index + 1}</b>{place.name}</span>)}</div><button onClick={applyRouteRecommendation}><WandSparkles size={15} /> 추천 순서 적용</button></> : <p className="is-current"><Navigation size={15} /> 현재 순서가 추천 동선과 같습니다.</p>}</section> : null;
   const renderCourseMapPlanner = () => coursePlaces.length > 1 ? <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section> : null;
-  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={DEFAULT_MAP_CENTER} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={moveToCurrentLocation}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt={`${mapPreviewPlace.name} 대표 사진`} /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · {getPlaceDistanceLabel(mapPreviewPlace)}</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => openCoursePicker(mapPreviewPlace)}><Plus size={15} /> 코스 선택</button>{savedPlaceIds.has(mapPreviewPlace.id) && <button className="route-map-current-course-add" onClick={() => addSavedPlaceToCurrentCourse(mapPreviewPlace)}><Plus size={15} /> {coursePlaces.some((place) => place.id === mapPreviewPlace.id) ? "현재 코스에 담김" : "현재 코스에 담기"}</button>}</div></motion.div>}</>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
+  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={DEFAULT_MAP_CENTER} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={moveToCurrentLocation}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt={`${mapPreviewPlace.name} 대표 사진`} /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · {getPlaceDistanceLabel(mapPreviewPlace)}</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button aria-label={`${mapPreviewPlace.name} 길찾기`} onClick={() => openPlaceNavigation(mapPreviewPlace)}><Navigation size={15} /> 길찾기</button><button onClick={() => openCoursePicker(mapPreviewPlace)}><Plus size={15} /> 코스 선택</button>{savedPlaceIds.has(mapPreviewPlace.id) && <button className="route-map-current-course-add" onClick={() => addSavedPlaceToCurrentCourse(mapPreviewPlace)}><Plus size={15} /> {coursePlaces.some((place) => place.id === mapPreviewPlace.id) ? "현재 코스에 담김" : "현재 코스에 담기"}</button>}</div></motion.div>}</>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
 
   const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => setIsLocationPermissionHelpOpen(false)}>나중에</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
   const renderCourseShareSheet = () => isCourseShareOpen && <div className="route-overlay route-course-share-overlay" onClick={() => setIsCourseShareOpen(false)}><section className="route-course-share-sheet" aria-label="코스 공유" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-course-share-heading"><div><span>SHARE THIS ROUTE</span><h3>{sharedCourseTitle}</h3><p>여행 일정을 링크나 이미지로 친구에게 전달하세요.</p></div><button aria-label="코스 공유 닫기" onClick={() => setIsCourseShareOpen(false)}><X size={17} /></button></div><button aria-label="공유 링크 복사" onClick={() => void copyCourseShareLink()}><span className="link"><Link2 size={19} /></span><div><strong>공유 링크 복사</strong><small>친구에게 바로 보낼 수 있는 코스 링크입니다.</small></div><Copy size={16} /></button><button aria-label="코스 이미지 저장" onClick={exportCourseImage}><span className="image"><Download size={19} /></span><div><strong>코스 이미지 저장</strong><small>한 장의 여행 일정 이미지로 저장합니다.</small></div><ChevronRight size={16} /></button>{supportsNativeShare && <button aria-label="기기 공유" onClick={() => void shareCourse()}><span className="native"><Share2 size={19} /></span><div><strong>다른 앱으로 공유</strong><small>설치된 메신저나 SNS를 선택할 수 있습니다.</small></div><ChevronRight size={16} /></button>}</section></div>;
@@ -1040,6 +1116,13 @@ export default function Home() {
   const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}{!query.trim() && !hasLiveSearch && recentSearches.length > 0 && <section className="route-recent-searches"><div className="route-recent-searches-heading"><div><span>RECENT</span><h2>최근 검색어</h2></div><button aria-label="최근 검색어 전체 삭제" onClick={clearRecentSearches}>전체 삭제</button></div>{recentSearches.map((term) => <div className="route-recent-search-row" key={term}><button className="route-recent-search-run" onClick={() => { setQuery(term); searchPlaces(term); }}><Clock3 size={15} /><span>{term}</span><ChevronRight size={15} /></button><button className="route-recent-search-delete" aria-label={`${term} 삭제`} onClick={() => removeRecentSearch(term)}><X size={14} /></button></div>)}</section>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderDiscoveryControls()}{renderMap(true, true)}<div className="route-search-list">{visibleMapPlaces.map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
   const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images">{getPlacePhotos(selectedPlace).slice(0, 3).map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p><a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "실제 네이버 예약·플레이스 페이지로 이동합니다." : "네이버 검색 결과에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소만 검색하기 <ChevronRight size={13} /></a></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스 선택</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
+
+  const renderPlaceDetailWithNavigation = () => <>{renderPlaceDetail()}{selectedPlace && <button className="route-place-navigation-fab" aria-label={`${selectedPlace.name} 길찾기`} onClick={() => openPlaceNavigation(selectedPlace)}><Navigation size={17} />길찾기</button>}</>;
+  const renderPlaceNavigation = () => {
+    if (!navigationPlace) return <div className="route-screen route-empty"><ScreenHeader title="길찾기" onBack={() => setScreen("map")} /><strong>목적지를 선택해 주세요.</strong></div>;
+    const Icon = travelModeMeta[travelMode].icon;
+    return <div className="route-screen route-place-navigation"><ScreenHeader title="길찾기" onBack={() => setScreen(selectedPlace ? "place-detail" : "map")} /><section className="route-navigation-destination"><div className="route-navigation-origin"><LocateFixed size={15} /><span><small>출발</small><strong>{userLocation ? "현재 위치" : "현재 위치 확인 중"}</strong></span></div><div className="route-navigation-line" /><div className="route-navigation-arrival"><MapPin size={16} /><span><small>도착</small><strong>{navigationPlace.name}</strong><em>{navigationPlace.address}</em></span></div></section>{renderTravelModeSelector()}<CourseRouteMap key={`place-navigation-${navigationPlace.id}-${travelMode}`} stops={navigationStops} travelMode={travelMode} /><section className="route-navigation-summary"><Icon size={20} /><div><small>{travelModeMeta[travelMode].summary}</small><strong>{formatMinutes(navigationMinutes)} · {formatDistance(navigationDistanceMeters)}</strong><span>{userLocation ? "현재 위치에서 목적지까지의 예상 이동입니다." : "현재 위치 권한을 허용하면 출발지 기준으로 정확해집니다."}</span></div></section><section className="route-external-navigation" aria-label="외부 네비게이션 열기"><div><span>OPEN NAVIGATION</span><h3>원하는 지도 앱에서 출발하세요</h3></div><a href={googleNavigationUrl(navigationPlace, travelMode, userLocation)} target="_blank" rel="noreferrer"><span className="google">G</span><div><strong>Google Maps</strong><small>{travelModeMeta[travelMode].label} 길찾기 열기</small></div><ExternalLink size={16} /></a><a href={naverNavigationUrl(navigationPlace, userLocation)}><span className="naver">N</span><div><strong>네이버지도</strong><small>현재 위치에서 네비게이션 시작</small></div><ExternalLink size={16} /></a><a href={kakaoNavigationUrl(navigationPlace)} target="_blank" rel="noreferrer"><span className="kakao">K</span><div><strong>카카오맵</strong><small>목적지 길찾기 열기</small></div><ExternalLink size={16} /></a></section></div>;
+  };
 
   const renderSaveSheet = () => <div className="route-overlay" onClick={() => setSaveSheetOpen(false)}><div className="route-save-sheet" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><h3>다음 중 선택하세요</h3><button onClick={savePlace}><Bookmark size={20} /><span><strong>내 장소에 저장</strong><small>나중에 다시 확인할 장소를 저장합니다.</small></span><ChevronRight size={16} /></button><button onClick={() => { if (!selectedPlace) return; setSaveSheetOpen(false); openCoursePicker(selectedPlace); }}><Plus size={20} /><span><strong>코스 선택 또는 새 코스</strong><small>여러 여행 코스 중 선택하거나 새로 만듭니다.</small></span><ChevronRight size={16} /></button><button className="cancel" onClick={() => setSaveSheetOpen(false)}>취소</button></div></div>;
   const renderPhotoGallery = () => {
@@ -1087,7 +1170,8 @@ export default function Home() {
   let content: ReactNode;
   if (screen === "map") content = renderMapScreen();
   else if (screen === "search") content = renderSearchScreen();
-  else if (screen === "place-detail") content = renderPlaceDetail();
+  else if (screen === "place-detail") content = renderPlaceDetailWithNavigation();
+  else if (screen === "place-navigation") content = renderPlaceNavigation();
   else if (screen === "my-places") content = renderMyPlaces();
   else if (screen === "my-courses") content = renderMyCourses();
   else if (screen === "course-create") content = renderCourseCreateAllPlaces();
@@ -1102,5 +1186,5 @@ export default function Home() {
   else if (screen === "active-course") content = renderActiveCourse();
   else content = <div className="route-screen route-home"><ScreenHeader title="Route" right={<button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button>} /><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-active-trip"><div><span>{courseStatusLabel[courseStatus].toUpperCase()}</span><h2>{courseTitle || "나의 여행 코스"}</h2><p>{formatCourseDateRange(courseStartDate, courseEndDate)} · 다음 일정 {courseTimes[coursePlaces[0]?.id] || "10:00"}</p><small>{courseStatusLabel[courseStatus]} · 장소 {coursePlaces.length}곳 · 지금 여행을 이어가세요.</small></div><button onClick={() => setScreen("active-course")}>코스 보기 <ChevronRight size={15} /></button></section><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
-  return <div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
+  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
 }

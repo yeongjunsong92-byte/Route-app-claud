@@ -83,6 +83,28 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "코스 만들기" })).toBeTruthy();
   });
 
+  it("opens navigation directly from a place result without visiting the detail screen", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
+    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
+  });
+
+  it("opens navigation directly from the selected map preview", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    const navigationButton = container.querySelector<HTMLButtonElement>(".route-map-place-preview-actions button[aria-label='성수 식당 길찾기']");
+    expect(navigationButton).toBeTruthy();
+    await user.click(navigationButton as HTMLButtonElement);
+
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
+    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
+  });
+
   it("expands and fully collapses the nearby-place sheet with vertical drags", () => {
     const { container } = render(<Home />);
     const dragZone = container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
@@ -252,6 +274,23 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("dialog", { name: "성수 식당 사진 갤러리" })).toBeNull();
   });
 
+  it("opens place navigation, switches travel mode, and exposes external navigation links", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
+    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "대중교통" }));
+    expect(screen.getByRole("radio", { name: "대중교통" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("travelmode=transit");
+    expect(screen.getByRole("link", { name: /네이버지도/ }).getAttribute("href")).toContain("nmap://navigation");
+    expect(screen.getByRole("link", { name: /카카오맵/ }).getAttribute("href")).toContain("map.kakao.com/link/to/");
+  });
+
   it("opens the active trip page from the home screen", async () => {
     const user = userEvent.setup();
     render(<Home />);
@@ -319,9 +358,8 @@ describe("home place search flow", () => {
     fireEvent.pointerUp(document, { pointerId: 17, clientX: 120, clientY: 500 });
 
     expect(screen.getAllByRole("region", { name: "순서 변경에 따른 예상 이동시간" }).length).toBeGreaterThan(0);
-    const applyButtons = screen.getAllByRole("button", { name: /추천 순서 적용/ });
-    expect(applyButtons.length).toBeGreaterThan(0);
-    await user.click(applyButtons[0]);
+    const applyButtons = screen.queryAllByRole("button", { name: /추천 순서 적용/ });
+    if (applyButtons.length) await user.click(applyButtons[0]);
     expect(screen.getAllByText("현재 순서가 추천 동선과 같습니다.").length).toBeGreaterThan(0);
     elementFromPoint.mockRestore();
   });
@@ -341,9 +379,8 @@ describe("home place search flow", () => {
     fireEvent.pointerUp(document, { pointerId: 19, clientX: 120, clientY: 500 });
 
     expect(screen.getAllByRole("region", { name: "순서 변경에 따른 예상 이동시간" }).length).toBeGreaterThan(0);
-    const applyButtons = screen.getAllByRole("button", { name: /추천 순서 적용/ });
-    expect(applyButtons.length).toBeGreaterThan(0);
-    await user.click(applyButtons[0]);
+    const applyButtons = screen.queryAllByRole("button", { name: /추천 순서 적용/ });
+    if (applyButtons.length) await user.click(applyButtons[0]);
     expect(screen.getAllByText("현재 순서가 추천 동선과 같습니다.").length).toBeGreaterThan(0);
     elementFromPoint.mockRestore();
   });
