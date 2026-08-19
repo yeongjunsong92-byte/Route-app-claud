@@ -50,5 +50,12 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("durationMinutes: Number(courseDurations[place.id]) || 60");
     expect(homeSource).toContain('aria-label="일차별 일정"');
     expect(homeSource).toContain("route-draggable-place");
+    expect(homeSource).toContain("estimateRouteSegments");
+    expect(homeSource).toContain("getRouteEfficiencyWarnings");
+    expect(homeSource).toContain('aria-label="장소 간 예상 이동시간"');
+    expect(homeSource).toContain("activeDetailStops");
+    expect(homeSource).toContain("route-day-map-context");
+    expect(homeSource).toContain("copyCourseShareLink");
+    expect(homeSource).toContain("exportCourseImage");
   });
 });

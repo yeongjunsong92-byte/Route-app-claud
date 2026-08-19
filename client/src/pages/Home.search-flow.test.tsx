@@ -54,6 +54,8 @@ import Home from "./Home";
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem("route-recent-place-searches");
+  window.history.replaceState({}, "", "/");
+  vi.restoreAllMocks();
 });
 
 describe("home place search flow", () => {
@@ -348,6 +350,63 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("tab", { name: /Day 2/ }));
     expect(screen.getByText("오설록 티 뮤지엄")).toBeTruthy();
     expect(screen.queryByText("협재 해수욕장")).toBeNull();
+    expect(screen.getByRole("region", { name: "장소 간 예상 이동시간" })).toBeTruthy();
+    expect(screen.getByText("Day 2 이동 경로만 지도에 강조하고 있어요.")).toBeTruthy();
+  });
+
+  it("opens the course sharing sheet with link copy and image export actions", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+    await user.click(screen.getByRole("button", { name: "코스 공유" }));
+
+    expect(screen.getByRole("region", { name: "코스 공유" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "공유 링크 복사" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "코스 이미지 저장" })).toBeTruthy();
+  });
+
+  it("shows the expected travel time inside the selected day timeline", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+
+    expect(screen.getByLabelText("협재 해수욕장에서 다음 장소까지 예상 이동시간").textContent).toContain("이동");
+  });
+
+  it("opens a shared saved course from a course query link", async () => {
+    window.history.replaceState({}, "", "/?course=101");
+    render(<Home />);
+
+    expect((await screen.findAllByRole("heading", { name: "성수 하루 코스" })).length).toBeGreaterThan(0);
+    expect(screen.getByText("Day 1 이동 경로만 지도에 강조하고 있어요.")).toBeTruthy();
+  });
+
+  it("opens a shared public course from its course query link", async () => {
+    window.history.replaceState({}, "", "/?course=c1");
+    render(<Home />);
+
+    expect((await screen.findAllByRole("heading", { name: "제주 2박 3일 힐링 코스" })).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "코스 공유" })).toBeTruthy();
+  });
+
+  it("exports a shared course as a PNG image", async () => {
+    const user = userEvent.setup();
+    const drawContext = { fillStyle: "", font: "", fillRect: vi.fn(), beginPath: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), arc: vi.fn() } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(drawContext);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,route");
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+    await user.click(screen.getByRole("button", { name: "코스 공유" }));
+    await user.click(screen.getByRole("button", { name: "코스 이미지 저장" }));
+
+    expect(anchorClick).toHaveBeenCalled();
   });
 
   it("shows the selected course lifecycle on the home active-trip card", async () => {
