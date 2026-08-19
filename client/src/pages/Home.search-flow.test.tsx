@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/_core/hooks/useAuth", () => ({
@@ -55,6 +56,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.removeItem("route-recent-place-searches");
   window.localStorage.removeItem("route-navigation-origin-favorites");
+  window.localStorage.removeItem("route-navigation-recent-destinations");
   window.history.replaceState({}, "", "/");
   vi.restoreAllMocks();
 });
@@ -69,6 +71,17 @@ describe("home place search flow", () => {
 
     expect(screen.getByRole("heading", { name: "장소 검색" })).toBeTruthy();
     expect(screen.getByPlaceholderText("성수 맛집")).toBeTruthy();
+  });
+
+  it("opens place navigation safely when the map emits a navigation event", async () => {
+    render(<Home />);
+
+    window.dispatchEvent(new CustomEvent("route:navigate-place", {
+      detail: { id: "event-place", name: "이벤트 목적지", category: "관광지", address: "서울 성동구 테스트길 1", image: "", description: "", rating: 4.5, reviewCount: 1, lat: 37.544, lng: 127.056, hours: "", phone: "" },
+    }));
+
+    expect(await screen.findByRole("heading", { name: "길찾기" })).toBeTruthy();
+    expect(screen.getByText("이벤트 목적지")).toBeTruthy();
   });
 
   it("shows the selected-place preview from a map marker and opens the course picker", async () => {
@@ -340,6 +353,7 @@ describe("home place search flow", () => {
     const originalUserAgent = navigator.userAgent;
     Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" });
     const user = userEvent.setup();
+    const toastMessage = vi.spyOn(toast, "message");
     try {
       render(<Home />);
       await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
@@ -347,6 +361,8 @@ describe("home place search flow", () => {
       await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
 
       expect(screen.getByRole("link", { name: /Google Play에서 네이버지도 설치/ }).getAttribute("href")).toContain("play.google.com/store/apps/details?id=com.nhn.android.nmap");
+      fireEvent.click(screen.getByRole("link", { name: /Google Play에서 네이버지도 설치/ }));
+      expect(toastMessage).toHaveBeenCalledWith("Google Play로 이동합니다.", expect.objectContaining({ description: expect.stringContaining("네이버지도를 설치한 뒤") }));
     } finally {
       Object.defineProperty(navigator, "userAgent", { configurable: true, value: originalUserAgent });
     }
@@ -367,13 +383,19 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
     fireEvent.click(screen.getByRole("link", { name: /네이버 내비로 출발/ }));
-    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")[0].name).toBe("성수 식당");
+    const storedDestinations = JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]");
+    expect(storedDestinations[0].name).toBe("성수 식당");
+    expect(storedDestinations[0].lastStartedAt).toEqual(expect.any(Number));
     expect(openNaverMap).toHaveBeenCalledWith(expect.stringContaining("map.naver.com/p/search/"), "_blank", "noopener,noreferrer");
     openNaverMap.mockRestore();
 
     await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
     expect(screen.getByRole("region", { name: "최근 목적지" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 선택" })).toBeTruthy();
+    expect(screen.getByText(/마지막 출발/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "성수 식당 최근 목적지 즐겨찾기 등록" }));
+    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")[0].isFavorite).toBe(true);
+    expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 즐겨찾기 해제" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "최근 목적지 관리" }));
     const managerDialog = screen.getByRole("dialog", { name: "최근 목적지 관리" });
     expect(managerDialog).toBeTruthy();
