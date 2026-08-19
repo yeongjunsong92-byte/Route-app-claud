@@ -146,6 +146,24 @@ export async function updateCourse(userId: number, courseId: number, input: Cour
   });
 }
 
+export async function appendPlaceToCourse(userId: number, courseId: number, place: SavedPlaceInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.transaction(async (tx) => {
+    const owned = await tx.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+    if (!owned[0]) throw new Error("Course not found or not owned by user");
+
+    const existing = await tx.select({ id: courseItems.id }).from(courseItems).where(and(eq(courseItems.courseId, courseId), eq(courseItems.placeId, place.placeId))).limit(1);
+    if (existing[0]) return { added: false } as const;
+
+    const items = await tx.select({ orderIndex: courseItems.orderIndex }).from(courseItems).where(eq(courseItems.courseId, courseId));
+    const orderIndex = items.reduce((highest, item) => Math.max(highest, item.orderIndex), -1) + 1;
+    await tx.insert(courseItems).values({ ...place, courseId, orderIndex, visitTime: "10:00", durationMinutes: 60, estimatedCost: 0 });
+    await tx.update(courses).set({ updatedAt: new Date() }).where(eq(courses.id, courseId));
+    return { added: true } as const;
+  });
+}
+
 export async function saveCourse(userId: number, courseId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");

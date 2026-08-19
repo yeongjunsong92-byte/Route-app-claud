@@ -4,6 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  appendPlaceToCourse,
   createCourse,
   getCourseDetails,
   listCoursesByOwner,
@@ -76,6 +77,10 @@ export const appRouter = router({
       isPublic: z.boolean().optional(),
       items: z.array(courseItemInput),
     })).mutation(({ ctx, input }) => updateCourse(ctx.user.id, input.courseId, input)),
+    appendPlace: protectedProcedure.input(z.object({
+      courseId: z.number().int().positive(),
+      place: placeInput,
+    })).mutation(({ ctx, input }) => appendPlaceToCourse(ctx.user.id, input.courseId, input.place)),
     save: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => saveCourse(ctx.user.id, input.courseId)),
   }),
 });

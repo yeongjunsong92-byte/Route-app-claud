@@ -30,5 +30,15 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("service.getPlacePredictions");
     expect(homeSource).toContain("map.panTo({ lat: place.lat, lng: place.lng })");
     expect(homeSource).toContain("categoryPinColor(place.category)");
+    expect(homeSource).toContain("service.getDetails");
+    expect(homeSource).toContain('fields: ["name", "formatted_address", "formatted_phone_number", "opening_hours", "photos"]');
+    expect(homeSource).toContain("getUrl({ maxWidth: 1200, maxHeight: 900 })");
+    expect(homeSource).toContain("route-photo-gallery-overlay");
+    expect(homeSource).toContain("route-discovery-controls");
+    expect(homeSource).toContain("syncMapMarkers(map, visibleMapPlaces)");
+    expect(homeSource).toContain("syncMapMarkers(mainMapRef.current, visibleMapPlaces)");
+    expect(homeSource).toContain("openCoursePicker");
+    expect(homeSource).toContain("route-home-active-trip");
+    expect(homeSource).toContain("naverMapSearchUrl");
   });
 });
