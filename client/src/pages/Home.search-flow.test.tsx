@@ -281,13 +281,11 @@ describe("home place search flow", () => {
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
-    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
 
-    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "두 장소의 직선 거리" })).toBeTruthy();
-    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /네이버 내비 열기/ }).getAttribute("href")).toContain("nmap://navigation");
-    expect(screen.getByRole("link", { name: /네이버지도 사이트에서 목적지 보기/ }).getAttribute("href")).toContain("map.naver.com");
+    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
+    expect(screen.getByText("교통수단별 예상 시간")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).getAttribute("href")).toContain("nmap://navigation");
     expect(screen.queryByRole("link", { name: /Google Maps/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /카카오맵/ })).toBeNull();
   });
@@ -302,12 +300,28 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "적용" }));
 
     expect(screen.getAllByText("오븐 성수").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /네이버 내비 열기/ }).getAttribute("href")).toContain("slat=37.545&slng=127.0565");
+    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).getAttribute("href")).toContain("slat=37.545&slng=127.0565");
     await user.click(screen.getByRole("button", { name: "출발지 변경" }));
     await user.click(screen.getByRole("button", { name: "현재 출발지 즐겨찾기 추가" }));
 
     expect(JSON.parse(window.localStorage.getItem("route-navigation-origin-favorites") || "[]")).toHaveLength(1);
     expect(container.querySelector(".route-navigation-favorites")).toBeTruthy();
+  });
+
+  it("opens the fixed place-detail Naver button into a destination confirmation sheet with travel-mode estimates", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
+    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
+
+    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
+    expect(screen.getAllByText("서울 성동구 연무장7길 5").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: /대중교통/ }));
+    expect(screen.getByRole("button", { name: /대중교통/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).textContent).toContain("대중교통 기준 선택됨");
   });
 
   it("opens the direction-sharing sheet with link copy and KakaoTalk share actions", async () => {
