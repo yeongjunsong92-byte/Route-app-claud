@@ -324,6 +324,19 @@ describe("home place search flow", () => {
     expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).textContent).toContain("대중교통 기준 선택됨");
   });
 
+  it("offers Naver app installation or web directions when navigation is unavailable", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+    await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
+
+    expect(screen.getByRole("dialog", { name: "네이버 내비 설치 안내" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /네이버지도 앱 설치하기/ }).getAttribute("href")).toContain("play.google.com/store/apps/details?id=com.nhn.android.nmap");
+    expect(screen.getByRole("link", { name: /네이버지도 웹에서 길찾기/ }).getAttribute("href")).toContain("map.naver.com/p/search/");
+  });
+
   it("stores a Naver destination for reuse and exposes map-based origin selection in the confirmation sheet", async () => {
     const user = userEvent.setup();
     const openNaverMap = vi.spyOn(window, "open").mockImplementation(() => null);

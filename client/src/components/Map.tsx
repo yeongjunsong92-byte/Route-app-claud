@@ -16,13 +16,15 @@ if (FRONTEND_MAP_KEY) MAPS_SCRIPT_PARAMS.set("key", FRONTEND_MAP_KEY);
 const MAPS_SCRIPT_URL = `/api/maps/script?${MAPS_SCRIPT_PARAMS.toString()}`;
 let mapScriptPromise: Promise<void> | null = null;
 
-const ROUTE_MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
+const ROUTE_EDITORIAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: "labels", stylers: [{ visibility: "off" }] },
   { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#d9d5cb" }, { lightness: 12 }] },
   { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
   { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f4f2ec" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#f0efeb" }, { lightness: 5 }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#e4e1d9" }, { lightness: 6 }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#d7d2c7" }, { lightness: 8 }] },
   { featureType: "transit", stylers: [{ visibility: "off" }] },
   { featureType: "water", elementType: "geometry", stylers: [{ color: "#cfe6e7" }] },
   { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#dcebdc" }, { visibility: "on" }] },
@@ -123,7 +125,7 @@ export function MapView({
         zoomControl: false,
         streetViewControl: false,
         clickableIcons: false,
-        styles: ROUTE_MINIMAL_MAP_STYLE,
+        styles: ROUTE_EDITORIAL_MAP_STYLE,
       });
       map.current = mapInstance;
       const checkForTiles = () => {
