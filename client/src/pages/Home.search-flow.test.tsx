@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -324,7 +324,7 @@ describe("home place search flow", () => {
     expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).textContent).toContain("대중교통 기준 선택됨");
   });
 
-  it("offers Naver app installation or web directions when navigation is unavailable", async () => {
+  it("offers Naver web directions in unsupported browser environments", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
@@ -333,8 +333,23 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
 
     expect(screen.getByRole("dialog", { name: "네이버 내비 설치 안내" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /네이버지도 앱 설치하기/ }).getAttribute("href")).toContain("play.google.com/store/apps/details?id=com.nhn.android.nmap");
     expect(screen.getByRole("link", { name: /네이버지도 웹에서 길찾기/ }).getAttribute("href")).toContain("map.naver.com/p/search/");
+  });
+
+  it("opens the Google Play installation page for Android navigation users", async () => {
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" });
+    const user = userEvent.setup();
+    try {
+      render(<Home />);
+      await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+      await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+      await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
+
+      expect(screen.getByRole("link", { name: /Google Play에서 네이버지도 설치/ }).getAttribute("href")).toContain("play.google.com/store/apps/details?id=com.nhn.android.nmap");
+    } finally {
+      Object.defineProperty(navigator, "userAgent", { configurable: true, value: originalUserAgent });
+    }
   });
 
   it("stores a Naver destination for reuse and exposes map-based origin selection in the confirmation sheet", async () => {
@@ -359,6 +374,11 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
     expect(screen.getByRole("region", { name: "최근 목적지" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 선택" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "최근 목적지 관리" }));
+    const managerDialog = screen.getByRole("dialog", { name: "최근 목적지 관리" });
+    expect(managerDialog).toBeTruthy();
+    await user.click(within(managerDialog).getByRole("button", { name: "성수 식당 최근 목적지 삭제" }));
+    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")).toHaveLength(0);
   });
 
   it("opens the direction-sharing sheet with link copy and KakaoTalk share actions", async () => {
