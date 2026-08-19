@@ -14,7 +14,14 @@ vi.mock("@/_core/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/const", () => ({ startLogin: vi.fn() }));
-vi.mock("@/components/Map", () => ({ MapView: ({ fallback }: { fallback?: React.ReactNode }) => <div data-testid="map-view">{fallback}</div> }));
+vi.mock("@/components/Map", () => ({
+  MapView: ({ fallback, onMapReady }: { fallback?: React.ReactNode; onMapReady?: (map: any) => void }) => {
+    React.useEffect(() => {
+      onMapReady?.({ panTo: () => undefined, setZoom: () => undefined, getZoom: () => 15 });
+    }, []);
+    return <div data-testid="map-view">{fallback}</div>;
+  },
+}));
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
@@ -37,7 +44,10 @@ vi.mock("@/lib/trpc", () => {
 
 import Home from "./Home";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.removeItem("route-recent-place-searches");
+});
 
 describe("home place search flow", () => {
   it("opens the map search screen when the home search bar is clicked", async () => {
@@ -132,5 +142,48 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "마이" }));
     await user.click(screen.getByRole("button", { name: "프로필 수정" }));
     expect(screen.getByRole("heading", { name: "프로필" })).toBeTruthy();
+  });
+
+  it("shows recent searches and applies a selected term to the search input", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("route-recent-place-searches", JSON.stringify(["성수 카페", "서울숲"]));
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "장소 검색" })[0]);
+    expect(screen.getByRole("heading", { name: "최근 검색어" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /성수 카페/ }));
+    expect((screen.getByPlaceholderText("성수 맛집") as HTMLInputElement).value).toBe("성수 카페");
+  });
+
+  it("reveals operating hours and photos for a selected place in the expanded sheet", () => {
+    const { container } = render(<Home />);
+    fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+
+    const dragZone = container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
+    fireEvent.pointerDown(dragZone, { pointerId: 4, clientY: 420 });
+    fireEvent.pointerUp(dragZone, { pointerId: 4, clientY: 350 });
+
+    expect(screen.getByText("영업시간")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /사진 1장과 상세 정보 보기/ })).toBeTruthy();
+  });
+
+  it("opens location-permission guidance when the browser denies current location", async () => {
+    const user = userEvent.setup();
+    const originalGeolocation = navigator.geolocation;
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (_success: PositionCallback, error: PositionErrorCallback) => error({ code: 1, PERMISSION_DENIED: 1 } as never),
+      },
+    });
+
+    try {
+      render(<Home />);
+      await user.click(screen.getByRole("button", { name: "현재 위치" }));
+      expect(await screen.findByRole("heading", { name: "현재 위치 권한이 필요합니다" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeTruthy();
+    } finally {
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: originalGeolocation });
+    }
   });
 });

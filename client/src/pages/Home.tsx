@@ -27,6 +27,7 @@ import { startLogin } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MapView } from "@/components/Map";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -46,6 +47,7 @@ type Place = {
   lng: number;
   hours: string;
   phone: string;
+  photos?: string[];
 };
 
 type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string };
@@ -69,6 +71,11 @@ const publicCourse: Course = {
 };
 
 const sampleCourses: Course[] = [publicCourse, { ...publicCourse, id: "c2", title: "부산 1박 2일 맛집 투어", region: "부산", author: "여행의 기록", image: "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=85", likes: 18 }];
+const RECENT_SEARCHES_KEY = "route-recent-place-searches";
+
+function getPlacePhotos(place: Place) {
+  return place.photos?.length ? place.photos : [place.image];
+}
 
 function categoryPinColor(category: string) {
   if (category === "맛집") return "#e978a5";
@@ -260,6 +267,10 @@ export default function Home() {
   const [placePredictions, setPlacePredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [mapReadyTick, setMapReadyTick] = useState(0);
   const [sheetMode, setSheetMode] = useState<"expanded" | "peek" | "hidden">("peek");
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try { return JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) || "[]") as string[]; } catch { return []; }
+  });
+  const [isLocationPermissionHelpOpen, setIsLocationPermissionHelpOpen] = useState(false);
   const mainMapRef = useRef<google.maps.Map | null>(null);
   const placeMarkerRefs = useRef<google.maps.Marker[]>([]);
   const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -457,12 +468,18 @@ export default function Home() {
           lng,
           hours: "영업시간은 Google Maps에서 확인",
           phone: "",
+          photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [],
         }];
       });
       setHasLiveSearch(true);
       setLivePlaces(normalized);
       setMapPreviewPlace(normalized[0] || null);
       setSheetMode("expanded");
+      setRecentSearches((current) => {
+        const next = [keyword, ...current.filter((item) => item !== keyword)].slice(0, 6);
+        try { window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next)); } catch { /* 저장소 접근이 제한된 환경에서는 현재 세션에만 유지 */ }
+        return next;
+      });
       if (normalized.length === 1) map.panTo({ lat: normalized[0].lat, lng: normalized[0].lng });
       else if (normalized.length > 1) {
         const bounds = new google.maps.LatLngBounds();
@@ -499,7 +516,10 @@ export default function Home() {
         zIndex: 99,
       });
       toast.success("현재 위치로 이동했습니다.");
-    }, () => toast.error("현재 위치 권한을 허용해주세요."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    }, (error) => {
+      if (error.code === error.PERMISSION_DENIED) setIsLocationPermissionHelpOpen(true);
+      else toast.error("현재 위치를 가져오지 못했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.");
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   };
   const handleSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     sheetDragStartRef.current = event.clientY;
@@ -514,14 +534,15 @@ export default function Home() {
   };
   const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={{ lat: 37.5446, lng: 127.0557 }} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? mapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={moveToCurrentLocation}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt="" /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · 350m</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => addPlaceToCourse(mapPreviewPlace)}><Plus size={15} /> 코스에 추가</button></div></motion.div>}</>}</div>;
 
+  const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => setIsLocationPermissionHelpOpen(false)}>나중에</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
   const renderMapScreen = () => <div className={`route-screen route-map-screen sheet-${sheetMode}`}>
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : "주변 장소"}</strong><span>{mapPlaces.length}곳</span></div>{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : mapPlaces.length ? (sheetMode === "expanded" ? mapPlaces : mapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 키워드 또는 카테고리로 검색해보세요.</span></div>}</div>}
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : "주변 장소"}</strong><span>{mapPlaces.length}곳</span></div>{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : mapPlaces.length ? (sheetMode === "expanded" ? mapPlaces : mapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>검색 결과가 없습니다</strong><span>다른 키워드 또는 카테고리로 검색해보세요.</span></div>}</div>}
   </div>;
 
-  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true, true)}<div className="route-search-list">{(hasLiveSearch ? mapPlaces : filteredPlaces).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
+  const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}{!query.trim() && !hasLiveSearch && recentSearches.length > 0 && <section className="route-recent-searches"><div><span>RECENT</span><h2>최근 검색어</h2></div>{recentSearches.map((term) => <button key={term} onClick={() => { setQuery(term); searchPlaces(term); }}><Clock3 size={15} /><span>{term}</span><ChevronRight size={15} /></button>)}</section>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderMap(true, true)}<div className="route-search-list">{(hasLiveSearch ? mapPlaces : filteredPlaces).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
   const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images"><img src={selectedPlace.image} alt="" /><img src={mockPlaces[(mockPlaces.indexOf(selectedPlace) + 1) % mockPlaces.length].image} alt="" /></div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>★ {selectedPlace.rating} ({selectedPlace.reviewCount}) · {selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p><p><Users size={14} /> {selectedPlace.phone}</p></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => addPlaceToCourse(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 
@@ -571,5 +592,5 @@ export default function Home() {
   else if (screen === "mypage") content = renderMyPage();
   else content = <div className="route-screen route-home"><ScreenHeader title="Route" right={<button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button>} /><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
-  return <div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
+  return <div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderLocationPermissionHelp()}{!["course-create", "place-detail", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div>;
 }
