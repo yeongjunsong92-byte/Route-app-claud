@@ -90,7 +90,7 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
     expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
+    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
   });
 
   it("opens navigation directly from the selected map preview", async () => {
@@ -103,7 +103,7 @@ describe("home place search flow", () => {
     await user.click(navigationButton as HTMLButtonElement);
 
     expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
+    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
   });
 
   it("expands and fully collapses the nearby-place sheet with vertical drags", () => {
@@ -275,7 +275,7 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("dialog", { name: "성수 식당 사진 갤러리" })).toBeNull();
   });
 
-  it("opens place navigation, switches travel mode, and exposes external navigation links", async () => {
+  it("opens a distance-only overview and prioritizes Naver navigation with a website fallback", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
@@ -284,12 +284,12 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
 
     expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByText("원하는 지도 앱에서 출발하세요")).toBeTruthy();
-    await user.click(screen.getByRole("radio", { name: "대중교통" }));
-    expect(screen.getByRole("radio", { name: "대중교통" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("travelmode=transit");
-    expect(screen.getByRole("link", { name: /네이버지도/ }).getAttribute("href")).toContain("nmap://navigation");
-    expect(screen.getByRole("link", { name: /카카오맵/ }).getAttribute("href")).toContain("map.kakao.com/link/to/");
+    expect(screen.getByRole("region", { name: "두 장소의 직선 거리" })).toBeTruthy();
+    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /네이버 내비 열기/ }).getAttribute("href")).toContain("nmap://navigation");
+    expect(screen.getByRole("link", { name: /네이버지도 사이트에서 목적지 보기/ }).getAttribute("href")).toContain("map.naver.com");
+    expect(screen.queryByRole("link", { name: /Google Maps/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /카카오맵/ })).toBeNull();
   });
 
   it("sets a direct navigation origin, saves it as a favorite, and updates external directions", async () => {
@@ -302,7 +302,7 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "적용" }));
 
     expect(screen.getAllByText("오븐 성수").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("origin=37.545%2C127.0565");
+    expect(screen.getByRole("link", { name: /네이버 내비 열기/ }).getAttribute("href")).toContain("slat=37.545&slng=127.0565");
     await user.click(screen.getByRole("button", { name: "출발지 변경" }));
     await user.click(screen.getByRole("button", { name: "현재 출발지 즐겨찾기 추가" }));
 
