@@ -81,6 +81,7 @@ export const courseItems = mysqlTable(
     lng: double("lng"),
     hours: varchar("hours", { length: 255 }),
     orderIndex: int("orderIndex").notNull(),
+    dayNumber: int("dayNumber").default(1).notNull(),
     visitTime: varchar("visitTime", { length: 10 }),
     durationMinutes: int("durationMinutes"),
     estimatedCost: int("estimatedCost"),

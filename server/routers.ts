@@ -32,6 +32,7 @@ const placeInput = z.object({
 
 const courseItemInput = placeInput.extend({
   orderIndex: z.number().int().min(0),
+  dayNumber: z.number().int().min(1).default(1),
   visitTime: z.string().max(10).optional(),
   durationMinutes: z.number().int().positive().optional(),
   estimatedCost: z.number().int().nonnegative().optional(),

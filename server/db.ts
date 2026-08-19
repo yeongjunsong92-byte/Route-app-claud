@@ -100,7 +100,7 @@ export type CourseInput = {
   endDate?: string | null;
   status?: "planned" | "active" | "completed";
   isPublic?: boolean;
-  items: Array<SavedPlaceInput & { orderIndex: number; visitTime?: string; durationMinutes?: number; estimatedCost?: number }>;
+  items: Array<SavedPlaceInput & { orderIndex: number; dayNumber?: number; visitTime?: string; durationMinutes?: number; estimatedCost?: number }>;
 };
 
 function toCourseDate(value?: string | null) {
@@ -166,7 +166,7 @@ export async function appendPlaceToCourse(userId: number, courseId: number, plac
 
     const items = await tx.select({ orderIndex: courseItems.orderIndex }).from(courseItems).where(eq(courseItems.courseId, courseId));
     const orderIndex = items.reduce((highest, item) => Math.max(highest, item.orderIndex), -1) + 1;
-    await tx.insert(courseItems).values({ ...place, courseId, orderIndex, visitTime: "10:00", durationMinutes: 60, estimatedCost: 0 });
+    await tx.insert(courseItems).values({ ...place, courseId, orderIndex, dayNumber: 1, visitTime: "10:00", durationMinutes: 60, estimatedCost: 0 });
     await tx.update(courses).set({ updatedAt: new Date() }).where(eq(courses.id, courseId));
     return { added: true } as const;
   });

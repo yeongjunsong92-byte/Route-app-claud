@@ -57,7 +57,7 @@ type Place = {
   website?: string;
 };
 
-type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string };
+type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string; dayNumber?: number; durationMinutes?: number };
 type CourseStatus = "planned" | "active" | "completed";
 type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus };
 
@@ -71,10 +71,10 @@ const mockPlaces: Place[] = [
 const publicCourse: Course = {
   id: "c1", title: "제주 2박 3일 힐링 코스", region: "제주", author: "여행하는 지훈", image: "https://images.unsplash.com/photo-1471922694854-ff1b63b20054?auto=format&fit=crop&w=1200&q=85", likes: 24, days: 3,
   items: [
-    { name: "협재 해수욕장", time: "10:00", duration: "1시간", cost: 0, image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=500&q=85" },
-    { name: "애월 카페거리", time: "12:30", duration: "1시간 30분", cost: 15000, image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=500&q=85" },
-    { name: "오설록 티 뮤지엄", time: "15:00", duration: "1시간", cost: 12000, image: "https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?auto=format&fit=crop&w=500&q=85" },
-    { name: "애월 해안도로", time: "17:30", duration: "1시간", cost: 0, image: "https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=500&q=85" },
+    { name: "협재 해수욕장", time: "10:00", duration: "1시간", durationMinutes: 60, dayNumber: 1, cost: 0, image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=500&q=85" },
+    { name: "애월 카페거리", time: "12:30", duration: "1시간 30분", durationMinutes: 90, dayNumber: 1, cost: 15000, image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=500&q=85" },
+    { name: "오설록 티 뮤지엄", time: "15:00", duration: "1시간", durationMinutes: 60, dayNumber: 2, cost: 12000, image: "https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?auto=format&fit=crop&w=500&q=85" },
+    { name: "애월 해안도로", time: "17:30", duration: "1시간", durationMinutes: 60, dayNumber: 2, cost: 0, image: "https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=500&q=85" },
   ],
 };
 
@@ -192,6 +192,21 @@ function formatMinutes(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder ? `약 ${hours}시간 ${remainder}분` : `약 ${hours}시간`;
+}
+
+function formatTotalDuration(minutes: number) {
+  if (minutes < 60) return `${minutes}분`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}시간 ${remainder}분` : `${hours}시간`;
+}
+
+function calculateCourseDayCount(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return 1;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const difference = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return difference >= 0 ? Math.max(1, difference + 1) : 1;
 }
 
 function RouteMapFallback({ stops }: { stops: RouteStop[] }) {
@@ -317,8 +332,11 @@ export default function Home() {
   const [coursePlaces, setCoursePlaces] = useState<Place[]>(mockPlaces);
   const [courseTimes, setCourseTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00", p4: "19:00" });
   const [courseCosts, setCourseCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000", p4: "0" });
+  const [courseItemDays, setCourseItemDays] = useState<Record<string, number>>({ p1: 1, p2: 1, p3: 1, p4: 1 });
+  const [courseDurations, setCourseDurations] = useState<Record<string, string>>({ p1: "60", p2: "60", p3: "60", p4: "60" });
   const [courseMemos, setCourseMemos] = useState<Record<string, string>>({});
   const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
+  const [activeDetailDay, setActiveDetailDay] = useState(1);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
   const [livePlaces, setLivePlaces] = useState<Place[]>([]);
   const [hasLiveSearch, setHasLiveSearch] = useState(false);
@@ -338,6 +356,8 @@ export default function Home() {
   const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
   const sheetDragStartRef = useRef<number | null>(null);
   const galleryDragStartRef = useRef<number | null>(null);
+  const courseDragStartRef = useRef<number | null>(null);
+  const draggedCourseIndexRef = useRef<number | null>(null);
   const selectedCourseId = Number(selectedCourse.id);
   const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
   const selectedCourseQuery = trpc.courses.get.useQuery(selectedCourseInput, { enabled: isAuthenticated && ["edit-course", "course-detail"].includes(screen) && selectedCourseId > 0 });
@@ -439,12 +459,26 @@ export default function Home() {
     return () => { active = false; };
   }, [mapReadyTick, query, screen]);
   const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
+  const courseDayCount = calculateCourseDayCount(courseStartDate, courseEndDate);
+  const totalDurationMinutes = coursePlaces.reduce((total, place) => total + (Number(courseDurations[place.id]) || 60), 0);
+  const dayDurationMinutes = useMemo(() => Object.fromEntries(Array.from({ length: courseDayCount }, (_, index) => {
+    const day = index + 1;
+    return [day, coursePlaces.filter((place) => (courseItemDays[place.id] || 1) === day).reduce((total, place) => total + (Number(courseDurations[place.id]) || 60), 0)];
+  })), [courseDayCount, courseDurations, courseItemDays, coursePlaces]);
   const courseScheduleWarnings = useMemo(() => getScheduleWarnings(coursePlaces, courseTimes), [coursePlaces, courseTimes]);
   const courseStops = useMemo<RouteStop[]>(() => coursePlaces.slice(0, 8).map((place) => ({ name: place.name, lat: place.lat, lng: place.lng })), [coursePlaces]);
-  const selectedCourseStops = useMemo<RouteStop[]>(() => selectedCourse.items.map((item, index) => {
+  const courseDetailItems = useMemo<CourseItem[]>(() => {
+    const detailItems = selectedCourseQuery.data?.items as Array<any> | undefined;
+    if (detailItems?.length) return detailItems.map((item) => ({ name: item.name, time: item.visitTime || "10:00", duration: formatTotalDuration(item.durationMinutes || 60), durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1, cost: item.estimatedCost || 0, image: item.imageUrl || mockPlaces[0].image, address: item.address || undefined }));
+    return selectedCourse.items.map((item) => ({ ...item, durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1 }));
+  }, [selectedCourse.items, selectedCourseQuery.data]);
+  const detailDayNumbers = useMemo(() => Array.from(new Set(courseDetailItems.map((item) => item.dayNumber || 1))).sort((a, b) => a - b), [courseDetailItems]);
+  const activeDetailItems = useMemo(() => courseDetailItems.filter((item) => (item.dayNumber || 1) === activeDetailDay), [activeDetailDay, courseDetailItems]);
+  const activeDetailDuration = activeDetailItems.reduce((total, item) => total + (item.durationMinutes || 60), 0);
+  const selectedCourseStops = useMemo<RouteStop[]>(() => courseDetailItems.map((item, index) => {
     const fallback = mockPlaces.find((place) => place.name.includes(item.name) || item.name.includes(place.name)) || mockPlaces[index % mockPlaces.length];
     return { name: item.name, lat: fallback.lat, lng: fallback.lng };
-  }), [selectedCourse.items]);
+  }), [courseDetailItems]);
   const selectedCourseScheduleWarnings = useMemo(() => {
     const detail = selectedCourseQuery.data;
     if (!detail?.items?.length) return [];
@@ -454,6 +488,56 @@ export default function Home() {
     });
     return getScheduleWarnings(detailPlaces, Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.visitTime || "10:00"])));
   }, [selectedCourseQuery.data]);
+  useEffect(() => {
+    if (detailDayNumbers.length && !detailDayNumbers.includes(activeDetailDay)) setActiveDetailDay(detailDayNumbers[0]);
+  }, [activeDetailDay, detailDayNumbers]);
+  useEffect(() => {
+    const getCourseRows = () => Array.from(document.querySelectorAll<HTMLElement>(".route-draggable-place, .route-edit-place-row"));
+    const getCourseRow = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>(".route-draggable-place, .route-edit-place-row") : null;
+    const pointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (!(event.target instanceof Element) || !event.target.closest(".route-drag-handle, .route-edit-place-row > b")) return;
+      const row = getCourseRow(event.target);
+      const index = row ? getCourseRows().indexOf(row) : -1;
+      if (index < 0) return;
+      row?.classList.add("is-dragging");
+      courseDragStartRef.current = index;
+      draggedCourseIndexRef.current = index;
+      setDraggedCourseIndex(index);
+      row?.setPointerCapture?.(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      const currentIndex = draggedCourseIndexRef.current;
+      if (currentIndex === null) return;
+      const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(".route-draggable-place, .route-edit-place-row");
+      const nextIndex = row ? getCourseRows().indexOf(row) : -1;
+      if (nextIndex < 0 || nextIndex === currentIndex) return;
+      setCoursePlaces((items) => {
+        const next = [...items];
+        const [moved] = next.splice(currentIndex, 1);
+        next.splice(nextIndex, 0, moved);
+        return next;
+      });
+      draggedCourseIndexRef.current = nextIndex;
+      setDraggedCourseIndex(nextIndex);
+    };
+    const pointerUp = () => {
+      courseDragStartRef.current = null;
+      draggedCourseIndexRef.current = null;
+      getCourseRows().forEach((row) => row.classList.remove("is-dragging"));
+      setDraggedCourseIndex(null);
+    };
+    document.addEventListener("pointerdown", pointerDown);
+    document.addEventListener("pointermove", pointerMove);
+    document.addEventListener("pointerup", pointerUp);
+    document.addEventListener("pointercancel", pointerUp);
+    return () => {
+      document.removeEventListener("pointerdown", pointerDown);
+      document.removeEventListener("pointermove", pointerMove);
+      document.removeEventListener("pointerup", pointerUp);
+      document.removeEventListener("pointercancel", pointerUp);
+    };
+  }, [draggedCourseIndex]);
 
   useEffect(() => {
     const detail = selectedCourseQuery.data;
@@ -469,6 +553,8 @@ export default function Home() {
     setCourseStatus(detail.status || "planned");
     setCourseTimes(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.visitTime || "10:00"])));
     setCourseCosts(Object.fromEntries(detail.items.map((item: any) => [item.placeId, String(item.estimatedCost || 0)])));
+    setCourseItemDays(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.dayNumber || 1])));
+    setCourseDurations(Object.fromEntries(detail.items.map((item: any) => [item.placeId, String(item.durationMinutes || 60)])));
     setCourseMemos(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.note || ""])));
   }, [screen, selectedCourseQuery.data]);
 
@@ -515,7 +601,7 @@ export default function Home() {
   };
   const saveCourse = async () => {
     try {
-      await createCourseMutation.mutateAsync({ title: courseTitle, region: "서울", coverImage: coursePlaces[0]?.image, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, visitTime: courseTimes[place.id] || "10:00", estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      await createCourseMutation.mutateAsync({ title: courseTitle, region: "서울", coverImage: coursePlaces[0]?.image, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
       await trpcUtils.courses.mine.invalidate();
       toast.success("코스를 저장했습니다."); setScreen("my-courses"); setSelectedTab("courses");
     } catch { toast.error("코스를 저장하지 못했습니다."); }
@@ -527,7 +613,7 @@ export default function Home() {
       return;
     }
     try {
-      await updateCourseMutation.mutateAsync({ courseId: numericCourseId, title: courseTitle, region: selectedCourse.region, coverImage: coursePlaces[0]?.image, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, visitTime: courseTimes[place.id] || "10:00", estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      await updateCourseMutation.mutateAsync({ courseId: numericCourseId, title: courseTitle, region: selectedCourse.region, coverImage: coursePlaces[0]?.image, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
       await trpcUtils.courses.mine.invalidate();
       toast.success("코스 수정 내용을 저장했습니다."); setScreen("my-courses"); setSelectedTab("courses");
     } catch { toast.error("코스 수정 내용을 저장하지 못했습니다."); }
@@ -542,8 +628,22 @@ export default function Home() {
       return next;
     });
   };
+  const handleCoursePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (draggedCourseIndex === null) return;
+    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-course-index]");
+    const nextIndex = Number(row?.dataset.courseIndex);
+    if (!Number.isInteger(nextIndex) || nextIndex === draggedCourseIndex) return;
+    moveCoursePlace(draggedCourseIndex, nextIndex);
+    setDraggedCourseIndex(nextIndex);
+  };
+  const clearCourseDrag = () => {
+    courseDragStartRef.current = null;
+    setDraggedCourseIndex(null);
+  };
   const addPlaceToCourse = (place: Place) => {
     setCoursePlaces((items) => items.some((item) => item.id === place.id) ? items : [...items, place]);
+    setCourseItemDays((current) => ({ ...current, [place.id]: current[place.id] || 1 }));
+    setCourseDurations((current) => ({ ...current, [place.id]: current[place.id] || "60" }));
     setCourseStep(2);
     setScreen("course-create");
   };
@@ -568,6 +668,8 @@ export default function Home() {
     setCourseStatus("planned");
     setCourseTimes({ [coursePickerPlace.id]: "10:00" });
     setCourseCosts({ [coursePickerPlace.id]: "0" });
+    setCourseItemDays({ [coursePickerPlace.id]: 1 });
+    setCourseDurations({ [coursePickerPlace.id]: "60" });
     setCoursePickerPlace(null);
     setCourseStep(1);
     setSelectedTab("courses");
@@ -732,7 +834,9 @@ export default function Home() {
     else if (distance > 55) setSheetMode((mode) => mode === "expanded" ? "peek" : "hidden");
   };
   const renderDiscoveryControls = () => <div className="route-discovery-controls"><button className={sortByDistance ? "active" : ""} onClick={() => setSortByDistance((value) => !value)}><ArrowUpDown size={14} /> 거리순 {sortByDistance ? "ON" : ""}</button><button className={openNowOnly ? "active" : ""} onClick={() => setOpenNowOnly((value) => !value)}><Clock3 size={14} /> 영업 중</button></div>;
-  const renderScheduleWarnings = (warnings = courseScheduleWarnings) => warnings.length > 0 && <section className="route-schedule-warnings" aria-label="일정 경고"><div><AlertTriangle size={17} /><span><strong>일정 확인이 필요해요</strong><small>방문 시간과 장소 영업시간을 다시 확인하세요.</small></span></div>{warnings.slice(0, 3).map((warning) => <p key={`${warning.placeId}-${warning.message}`}>{warning.message}</p>)}</section>;
+  const renderScheduleWarnings = (warnings = courseScheduleWarnings) => <>{screen === "course-create" && courseStep >= 3 && <><section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>{courseStep === 3 && <section className="route-course-day-planner"><div><span>DAY PLANNING</span><h3>일차와 체류시간</h3></div>{coursePlaces.map((place) => <div key={place.id}><strong>{place.name}</strong>{renderPlanningFields(place)}</div>)}</section>}</>}{warnings.length > 0 && <section className="route-schedule-warnings" aria-label="일정 경고"><div><AlertTriangle size={17} /><span><strong>일정 확인이 필요해요</strong><small>방문 시간과 장소 영업시간을 다시 확인하세요.</small></span></div>{warnings.slice(0, 3).map((warning) => <p key={`${warning.placeId}-${warning.message}`}>{warning.message}</p>)}</section>}</>;
+  const renderPlanningFields = (place: Place) => <div className="route-planning-fields"><label>일차<select aria-label={`${place.name} 일차`} value={courseItemDays[place.id] || 1} onChange={(event) => setCourseItemDays((current) => ({ ...current, [place.id]: Number(event.target.value) }))}>{Array.from({ length: courseDayCount }, (_, index) => <option key={index + 1} value={index + 1}>Day {index + 1}</option>)}</select></label><label>체류 시간<select aria-label={`${place.name} 체류 시간`} value={courseDurations[place.id] || "60"} onChange={(event) => setCourseDurations((current) => ({ ...current, [place.id]: event.target.value }))}>{[30, 60, 90, 120, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{formatTotalDuration(minutes)}</option>)}</select></label></div>;
+  const renderDurationSummary = () => <section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>;
   const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={DEFAULT_MAP_CENTER} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={moveToCurrentLocation}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt={`${mapPreviewPlace.name} 대표 사진`} /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · {getPlaceDistanceLabel(mapPreviewPlace)}</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button onClick={() => openCoursePicker(mapPreviewPlace)}><Plus size={15} /> 코스 선택</button>{savedPlaceIds.has(mapPreviewPlace.id) && <button className="route-map-current-course-add" onClick={() => addSavedPlaceToCurrentCourse(mapPreviewPlace)}><Plus size={15} /> {coursePlaces.some((place) => place.id === mapPreviewPlace.id) ? "현재 코스에 담김" : "현재 코스에 담기"}</button>}</div></motion.div>}</>}</div>;
 
   const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => setIsLocationPermissionHelpOpen(false)}>나중에</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
@@ -760,11 +864,11 @@ export default function Home() {
 
   const renderMyCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="내 코스" onBack={() => setTab("map")} right={<button className="route-header-add" onClick={() => { setCourseStep(1); setScreen("course-create"); }}>+ 새 코스</button>} /><div className="route-list-tabs"><button className="active">내 코스</button><button>저장 코스</button></div><div className="route-course-list">{courseList.length ? courseList.map((course) => <div className="route-large-course-card" key={course.id}><button className="route-course-card-main" onClick={() => { setSelectedCourse(course); setScreen("course-detail"); }}><img src={course.image} alt="" /><span><em className={`route-course-status ${course.status || "planned"}`}>{courseStatusLabel[course.status || "planned"]}</em><strong>{course.title}</strong><small>{formatCourseDateRange(course.startDate, course.endDate)} · 장소 {course.items.length}곳</small></span><ChevronRight size={16} /></button>{hasDbCourses && <button className="route-course-edit-button" aria-label="코스 수정" onClick={() => { setSelectedCourse(course); setCourseTitle(course.title); setCourseStartDate(toDateInputValue(course.startDate)); setCourseEndDate(toDateInputValue(course.endDate)); setCourseStatus(course.status || "planned"); setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("edit-course"); }}><Pencil size={15} /></button>}</div>) : <div className="route-empty"><Calendar size={22} /><strong>저장된 내 코스가 없습니다</strong><span>새 코스를 만들어 여행 일정을 기록해보세요.</span></div>}</div></div>;
 
-  const renderEditCourse = () => <div className="route-screen route-course-create"><ScreenHeader title="내 버전 코스" onBack={() => setScreen("my-courses")} right={<span>수정</span>} /><div className="route-create-step"><h2>코스 정보를 수정하세요</h2><p>여행 기간·상태와 장소 순서, 방문 시간을 관리할 수 있습니다.</p><label className="route-edit-label">코스 이름<Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} /></label><div className="route-course-lifecycle-fields"><label>시작일<input type="date" value={courseStartDate} onChange={(event) => setCourseStartDate(event.target.value)} /></label><label>종료일<input type="date" value={courseEndDate} min={courseStartDate || undefined} onChange={(event) => setCourseEndDate(event.target.value)} /></label><label>여행 상태<select value={courseStatus} onChange={(event) => setCourseStatus(event.target.value as CourseStatus)}><option value="planned">예정</option><option value="active">진행 중</option><option value="completed">완료</option></select></label></div>{renderScheduleWarnings()}<div className="route-edit-place-list"><h3>일정 장소 {coursePlaces.length}곳</h3>{coursePlaces.slice(0, 4).map((place, index) => <div className="route-edit-place-block" key={place.id}><div className="route-edit-place-row"><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span><div className="route-edit-place-actions"><button disabled={index === 0} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button disabled={index === coursePlaces.length - 1} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button></div></div><div className="route-edit-fields"><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label className="memo">메모<textarea value={courseMemos[place.id] || ""} onChange={(event) => setCourseMemos((current) => ({ ...current, [place.id]: event.target.value }))} placeholder="이 장소에 대한 메모" /></label></div></div>)}</div></div><div className="route-bottom-action"><button className="secondary" onClick={() => setScreen("my-courses")}>취소</button><button onClick={() => void saveEditedCourse()} disabled={updateCourseMutation.isPending}>저장하기</button></div></div>;
+  const renderEditCourse = () => <div className="route-screen route-course-create"><ScreenHeader title="내 버전 코스" onBack={() => setScreen("my-courses")} right={<span>수정</span>} /><div className="route-create-step"><h2>코스 정보를 수정하세요</h2><p>여행 기간·상태와 장소별 Day, 체류시간, 방문 순서를 관리할 수 있습니다.</p><label className="route-edit-label">코스 이름<Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} /></label><div className="route-course-lifecycle-fields"><label>시작일<input type="date" value={courseStartDate} onChange={(event) => setCourseStartDate(event.target.value)} /></label><label>종료일<input type="date" value={courseEndDate} min={courseStartDate || undefined} onChange={(event) => setCourseEndDate(event.target.value)} /></label><label>여행 상태<select value={courseStatus} onChange={(event) => setCourseStatus(event.target.value as CourseStatus)}><option value="planned">예정</option><option value="active">진행 중</option><option value="completed">완료</option></select></label></div>{renderDurationSummary()}{renderScheduleWarnings()}<div className="route-edit-place-list"><h3>일정 장소 {coursePlaces.length}곳</h3>{coursePlaces.map((place, index) => <div className="route-edit-place-block" key={place.id}><div className="route-edit-place-row"><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span><div className="route-edit-place-actions"><button disabled={index === 0} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button disabled={index === coursePlaces.length - 1} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button></div></div><div className="route-edit-fields">{renderPlanningFields(place)}<label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label className="memo">메모<textarea value={courseMemos[place.id] || ""} onChange={(event) => setCourseMemos((current) => ({ ...current, [place.id]: event.target.value }))} placeholder="이 장소에 대한 메모" /></label></div></div>)}</div></div><div className="route-bottom-action"><button className="secondary" onClick={() => setScreen("my-courses")}>취소</button><button onClick={() => void saveEditedCourse()} disabled={updateCourseMutation.isPending}>저장하기</button></div></div>;
 
   const renderCourseCreate = () => <div className="route-screen route-course-create"><ScreenHeader title="코스 만들기" onBack={() => courseStep > 1 ? setCourseStep(courseStep - 1) : setScreen("map")} right={<span>{courseStep}/4</span>} /><StepIndicator step={courseStep} />{courseStep === 1 && <div className="route-create-step route-create-name"><Compass size={34} className="route-step-icon" /><h2>코스 정보를 정해주세요</h2><Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} placeholder="서울 데이트 코스" /><div className="route-course-lifecycle-fields"><label>시작일<input type="date" value={courseStartDate} onChange={(event) => setCourseStartDate(event.target.value)} /></label><label>종료일<input type="date" value={courseEndDate} min={courseStartDate || undefined} onChange={(event) => setCourseEndDate(event.target.value)} /></label><label>여행 상태<select value={courseStatus} onChange={(event) => setCourseStatus(event.target.value as CourseStatus)}><option value="planned">예정</option><option value="active">진행 중</option><option value="completed">완료</option></select></label></div><small>예) 부산 1박 2일 여행, 제주 힐링 코스</small></div>}{courseStep === 2 && <div className="route-create-step"><h2>장소 추가하기</h2><p>지도에서 장소를 검색하거나 내 장소에서 추가해보세요.</p><div className="route-inline-search"><Search size={15} /><input placeholder="장소 검색" onChange={(event) => setQuery(event.target.value)} /></div>{renderMap(true)}<div className="route-added-places"><strong>추가한 장소 {coursePlaces.length}</strong>{coursePlaces.slice(0, 8).map((place, index) => <div key={place.id} className={`route-draggable-place ${draggedCourseIndex === index ? "is-dragging" : ""}`} draggable onDragStart={() => setDraggedCourseIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedCourseIndex !== null) moveCoursePlace(draggedCourseIndex, index); setDraggedCourseIndex(null); }} onDragEnd={() => setDraggedCourseIndex(null)}><GripVertical size={15} className="route-drag-handle" /><b>{index + 1}</b><span>{place.name}<small>{place.address}</small></span><button onClick={() => setCoursePlaces((items) => items.filter((item) => item.id !== place.id))}>×</button></div>)}</div></div>}{courseStep === 3 && <div className="route-create-step"><h2>세부사항 설정하기</h2><p>각 장소의 시간, 예상 비용, 메모를 설정해보세요.</p>{renderScheduleWarnings()}{coursePlaces.slice(0, 4).map((place, index) => <details key={place.id} open={index === 0} className="route-place-detail-accordion"><summary><b>{index + 1}</b>{place.name}<ChevronDown size={15} /></summary><div><label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>메모<textarea placeholder="메모를 입력해보세요" /></label></div></details>)}</div>}{courseStep === 4 && <div className="route-create-step"><h2>코스 전체 확인</h2><p>코스의 전체 일정과 예상 비용을 확인하고 저장합니다.</p>{renderScheduleWarnings()}<CourseRouteMap stops={courseStops} compact /><div className="route-review-timeline">{coursePlaces.slice(0, 4).map((place, index) => <div key={place.id}><time>{courseTimes[place.id] || "10:00"}<small>도착</small></time><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>1시간 · {(Number(courseCosts[place.id]) || 0).toLocaleString()}원</small></span></div>)}</div><div className="route-total-cost"><span>예상 총 비용</span><strong>{totalCost.toLocaleString()}원</strong></div></div>}<div className="route-bottom-action"><button className="secondary" disabled={courseStep === 1} onClick={() => setCourseStep((step) => Math.max(1, step - 1))}>이전</button><button onClick={() => courseStep < 4 ? setCourseStep((step) => step + 1) : void saveCourse()}>{courseStep === 4 ? "저장하기" : "다음"}</button></div></div>;
 
-  const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={selectedCourse.title} onBack={() => setScreen("friends")} right={<button><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{courseStatusLabel[selectedCourse.status || "planned"]} · {formatCourseDateRange(selectedCourse.startDate, selectedCourse.endDate)}</span><h2>{selectedCourse.title}</h2><p>by {selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {selectedCourse.items.length}곳</span><span><Clock3 size={14} /> 1일 일정</span></div>{renderScheduleWarnings(selectedCourseScheduleWarnings)}<CourseRouteMap stops={selectedCourseStops} /><div className="route-detail-timeline"><h3>코스 일정</h3>{selectedCourse.items.map((item, index) => <button key={item.name} onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{item.duration} · {item.cost.toLocaleString()}원</small></span></button>)}</div><div className="route-bottom-action single"><button onClick={() => { setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("course-create"); }}>내 코스로 저장</button></div></div>;
+  const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={selectedCourse.title} onBack={() => setScreen("friends")} right={<button><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{courseStatusLabel[selectedCourse.status || "planned"]} · {formatCourseDateRange(selectedCourse.startDate, selectedCourse.endDate)}</span><h2>{selectedCourse.title}</h2><p>by {selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {courseDetailItems.length}곳</span><span><Clock3 size={14} /> 총 {formatTotalDuration(courseDetailItems.reduce((total, item) => total + (item.durationMinutes || 60), 0))}</span></div>{renderScheduleWarnings(selectedCourseScheduleWarnings)}<CourseRouteMap stops={selectedCourseStops} /><div className="route-detail-timeline"><div className="route-day-timeline-heading"><div><span>ITINERARY</span><h3>일차별 일정</h3></div><strong>{formatTotalDuration(activeDetailDuration)}</strong></div><div className="route-day-tabs" role="tablist" aria-label="일차별 일정">{detailDayNumbers.map((day) => <button key={day} role="tab" aria-selected={activeDetailDay === day} className={activeDetailDay === day ? "active" : ""} onClick={() => setActiveDetailDay(day)}>Day {day}<small>{formatTotalDuration(courseDetailItems.filter((item) => (item.dayNumber || 1) === day).reduce((total, item) => total + (item.durationMinutes || 60), 0))}</small></button>)}</div>{activeDetailItems.map((item, index) => <button key={`${item.name}-${index}`} onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{formatTotalDuration(item.durationMinutes || 60)} · {item.cost.toLocaleString()}원</small></span></button>)}</div><div className="route-bottom-action single"><button onClick={() => { setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("course-create"); }}>내 코스로 저장</button></div></div>;
   const renderActiveCourse = () => {
     const nextPlace = coursePlaces[0];
     return <div className="route-screen route-active-course"><ScreenHeader title="진행 중인 코스" onBack={() => setTab("home")} /><section className="route-active-course-hero" style={{ backgroundImage: `linear-gradient(130deg, rgba(35,27,72,.46), rgba(21,19,32,.82)), url(${nextPlace?.image || mockPlaces[0].image})` }}><span>{courseStatusLabel[courseStatus].toUpperCase()}</span><h2>{courseTitle || "나의 여행 코스"}</h2><p>{formatCourseDateRange(courseStartDate, courseEndDate)} · 장소 {coursePlaces.length}곳</p><button onClick={() => { if (nextPlace) focusMapPlace(nextPlace); setSelectedTab("map"); setScreen("map"); }}><Navigation size={15} /> 지도에서 이어가기</button></section><section className="route-active-course-summary"><div><small>NEXT PLACE</small><strong>{nextPlace?.name || "다음 장소를 추가해보세요"}</strong><span>{nextPlace ? `${courseTimes[nextPlace.id] || "10:00"} · ${nextPlace.address}` : "여행 코스에 장소를 추가하면 다음 일정이 표시됩니다."}</span></div><b>{coursePlaces.length}</b></section>{renderScheduleWarnings()}<section className="route-active-course-timeline"><div className="route-home-section-heading"><div><span>ITINERARY</span><h3>오늘의 일정</h3></div><button onClick={() => { setCourseStep(2); setSelectedTab("courses"); setScreen("course-create"); }}>수정 <Pencil size={13} /></button></div>{coursePlaces.map((place, index) => <div key={place.id} className={index === 0 ? "is-next" : ""}><time>{courseTimes[place.id] || "10:00"}</time><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span></div>)}</section></div>;

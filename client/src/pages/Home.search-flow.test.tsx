@@ -32,11 +32,17 @@ vi.mock("framer-motion", () => ({
 vi.mock("@/lib/trpc", () => {
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false });
   const query = () => ({ data: [], isLoading: false, isError: false });
+  const ownedCourse = { id: 101, title: "성수 하루 코스", region: "서울", coverImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", startDate: null, endDate: null, status: "planned" };
+  const ownedCourseDetail = { ...ownedCourse, items: [
+    { placeId: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", lat: 37.544, lng: 127.056, durationMinutes: 60, dayNumber: 1, visitTime: "14:00", estimatedCost: 10000 },
+    { placeId: "p2", name: "오븐 성수", category: "카페", address: "서울 성동구 연무장길 7", lat: 37.545, lng: 127.057, durationMinutes: 60, dayNumber: 1, visitTime: "15:40", estimatedCost: 15000 },
+    { placeId: "p3", name: "성수동 스테이크", category: "맛집", address: "서울 성동구 아차산로 403", lat: 37.547, lng: 127.058, durationMinutes: 90, dayNumber: 1, visitTime: "17:00", estimatedCost: 50000 },
+  ] };
   const savedPlacesQuery = () => ({ data: [{ id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 }], isLoading: false, isError: false });
   return {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, mine: { useQuery: query }, saved: { useQuery: query }, get: { useQuery: query } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() } } }),
     },
@@ -272,6 +278,76 @@ describe("home place search flow", () => {
     fireEvent.change(screen.getByLabelText("방문 시간"), { target: { value: "22:00" } });
     expect(screen.getByRole("region", { name: "일정 경고" })).toBeTruthy();
     expect(screen.getByText(/성수 식당의 영업시간/)).toBeTruthy();
+  });
+
+  it("assigns a day and duration to a place while calculating the itinerary total", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
+    fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("종료일"), { target: { value: "2026-09-03" } });
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    await user.click(screen.getByRole("button", { name: "다음" }));
+
+    await user.selectOptions(screen.getByLabelText("성수 식당 일차"), "2");
+    await user.selectOptions(screen.getByLabelText("성수 식당 체류 시간"), "90");
+    expect(screen.getByText("전체 예상 소요시간")).toBeTruthy();
+    expect(screen.getByText("Day 2 · 1시간 30분")).toBeTruthy();
+  });
+
+  it("reorders added course places with a mobile pointer drag", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "+ 새 코스" }));
+    await user.click(screen.getByRole("button", { name: "다음" }));
+
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".route-draggable-place"));
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows[0].textContent).toContain("성수 식당");
+    const targetRow = rows[2];
+    const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(targetRow);
+
+    fireEvent.pointerDown(rows[0].querySelector(".route-drag-handle") as SVGElement, { pointerId: 17, clientX: 120, clientY: 380 });
+    fireEvent.pointerMove(document, { pointerId: 17, clientX: 120, clientY: 500 });
+    fireEvent.pointerUp(document, { pointerId: 17, clientX: 120, clientY: 500 });
+
+    expect(container.querySelectorAll<HTMLElement>(".route-draggable-place")[2].textContent).toContain("성수 식당");
+    elementFromPoint.mockRestore();
+  });
+
+  it("reorders saved course places from the edit screen with a mobile pointer drag", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "코스 수정" }));
+    await screen.findByText("일정 장소 3곳");
+
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".route-edit-place-row"));
+    const elementFromPoint = vi.spyOn(document, "elementFromPoint").mockReturnValue(rows[2]);
+    fireEvent.pointerDown(rows[0].querySelector("b") as HTMLElement, { pointerId: 19, clientX: 120, clientY: 380 });
+    fireEvent.pointerMove(document, { pointerId: 19, clientX: 120, clientY: 500 });
+    fireEvent.pointerUp(document, { pointerId: 19, clientX: 120, clientY: 500 });
+
+    expect(container.querySelectorAll<HTMLElement>(".route-edit-place-row")[2].textContent).toContain("성수 식당");
+    elementFromPoint.mockRestore();
+  });
+
+  it("separates a public course itinerary into day tabs", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+    expect(screen.getByRole("tab", { name: /Day 1/ })).toBeTruthy();
+    await user.click(screen.getByRole("tab", { name: /Day 2/ }));
+    expect(screen.getByText("오설록 티 뮤지엄")).toBeTruthy();
+    expect(screen.queryByText("협재 해수욕장")).toBeNull();
   });
 
   it("shows the selected course lifecycle on the home active-trip card", async () => {

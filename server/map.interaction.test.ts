@@ -46,5 +46,9 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('hours: item.hours || "영업시간 확인"');
     expect(homeSource).toContain("hours: place.hours");
     expect(homeSource).toContain("hours: coursePickerPlace.hours");
+    expect(homeSource).toContain("dayNumber: courseItemDays[place.id] || 1");
+    expect(homeSource).toContain("durationMinutes: Number(courseDurations[place.id]) || 60");
+    expect(homeSource).toContain('aria-label="일차별 일정"');
+    expect(homeSource).toContain("route-draggable-place");
   });
 });
