@@ -54,6 +54,7 @@ import Home from "./Home";
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem("route-recent-place-searches");
+  window.localStorage.removeItem("route-navigation-origin-favorites");
   window.history.replaceState({}, "", "/");
   vi.restoreAllMocks();
 });
@@ -291,6 +292,36 @@ describe("home place search flow", () => {
     expect(screen.getByRole("link", { name: /카카오맵/ }).getAttribute("href")).toContain("map.kakao.com/link/to/");
   });
 
+  it("sets a direct navigation origin, saves it as a favorite, and updates external directions", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    await user.click(screen.getByRole("button", { name: "출발지 변경" }));
+    await user.type(screen.getByRole("textbox", { name: "출발지 입력" }), "오븐 성수");
+    await user.click(screen.getByRole("button", { name: "적용" }));
+
+    expect(screen.getAllByText("오븐 성수").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("origin=37.545%2C127.0565");
+    await user.click(screen.getByRole("button", { name: "출발지 변경" }));
+    await user.click(screen.getByRole("button", { name: "현재 출발지 즐겨찾기 추가" }));
+
+    expect(JSON.parse(window.localStorage.getItem("route-navigation-origin-favorites") || "[]")).toHaveLength(1);
+    expect(container.querySelector(".route-navigation-favorites")).toBeTruthy();
+  });
+
+  it("opens the direction-sharing sheet with link copy and KakaoTalk share actions", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    await user.click(screen.getAllByRole("button", { name: "길찾기 공유" })[0]);
+
+    expect(screen.getByRole("region", { name: "길찾기 공유" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "길찾기 링크 복사" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "카카오톡으로 길찾기 공유" })).toBeTruthy();
+  });
+
   it("opens the active trip page from the home screen", async () => {
     const user = userEvent.setup();
     render(<Home />);
@@ -362,6 +393,20 @@ describe("home place search flow", () => {
     if (applyButtons.length) await user.click(applyButtons[0]);
     expect(screen.getAllByText("현재 순서가 추천 동선과 같습니다.").length).toBeGreaterThan(0);
     elementFromPoint.mockRestore();
+  });
+
+  it("compares the current and recommended route before sharing or applying it", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "+ 새 코스" }));
+    await user.click(screen.getByRole("button", { name: "다음" }));
+
+    expect(screen.getAllByRole("region", { name: "추천 동선 전후 비교" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("현재 순서").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("추천 순서").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "추천 동선 공유" }).length).toBeGreaterThan(0);
   });
 
   it("recalculates travel time and applies a route recommendation after a mobile edit-flow drag", async () => {
