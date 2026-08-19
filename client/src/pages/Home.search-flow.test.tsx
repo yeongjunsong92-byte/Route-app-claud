@@ -324,6 +324,27 @@ describe("home place search flow", () => {
     expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).textContent).toContain("대중교통 기준 선택됨");
   });
 
+  it("stores a Naver destination for reuse and exposes map-based origin selection in the confirmation sheet", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+    await user.click(screen.getByRole("button", { name: "지도에서 출발지 선택" }));
+
+    expect(screen.getByRole("region", { name: "지도에서 출발지 선택" })).toBeTruthy();
+    expect(screen.getByText("지도의 위치를 눌러 출발지를 선택하세요.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "네이버 내비 출발 확인 닫기" }));
+
+    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+    fireEvent.click(screen.getByRole("link", { name: /네이버 내비로 출발/ }));
+    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")[0].name).toBe("성수 식당");
+
+    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
+    expect(screen.getByRole("region", { name: "최근 목적지" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 선택" })).toBeTruthy();
+  });
+
   it("opens the direction-sharing sheet with link copy and KakaoTalk share actions", async () => {
     const user = userEvent.setup();
     render(<Home />);
