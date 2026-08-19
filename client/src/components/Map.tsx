@@ -16,6 +16,18 @@ if (FRONTEND_MAP_KEY) MAPS_SCRIPT_PARAMS.set("key", FRONTEND_MAP_KEY);
 const MAPS_SCRIPT_URL = `/api/maps/script?${MAPS_SCRIPT_PARAMS.toString()}`;
 let mapScriptPromise: Promise<void> | null = null;
 
+const ROUTE_MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#d9d5cb" }, { lightness: 12 }] },
+  { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f4f2ec" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#cfe6e7" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#dcebdc" }, { visibility: "on" }] },
+];
+
 function waitForGoogleMaps(timeoutMs = 15000) {
   return new Promise<void>((resolve, reject) => {
     const startedAt = Date.now();
@@ -111,6 +123,7 @@ export function MapView({
         zoomControl: false,
         streetViewControl: false,
         clickableIcons: false,
+        styles: ROUTE_MINIMAL_MAP_STYLE,
       });
       map.current = mapInstance;
       const checkForTiles = () => {

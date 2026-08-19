@@ -326,6 +326,7 @@ describe("home place search flow", () => {
 
   it("stores a Naver destination for reuse and exposes map-based origin selection in the confirmation sheet", async () => {
     const user = userEvent.setup();
+    const openNaverMap = vi.spyOn(window, "open").mockImplementation(() => null);
     render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
@@ -339,6 +340,8 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
     fireEvent.click(screen.getByRole("link", { name: /네이버 내비로 출발/ }));
     expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")[0].name).toBe("성수 식당");
+    expect(openNaverMap).toHaveBeenCalledWith(expect.stringContaining("map.naver.com/p/search/"), "_blank", "noopener,noreferrer");
+    openNaverMap.mockRestore();
 
     await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
     expect(screen.getByRole("region", { name: "최근 목적지" })).toBeTruthy();

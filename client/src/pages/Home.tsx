@@ -136,13 +136,25 @@ function googleNavigationUrl(place: Place, mode: TravelMode, origin?: { lat: num
 }
 
 function naverNavigationUrl(place: Place, origin?: { lat: number; lng: number } | null, originName = "현재 위치") {
-  const params = new URLSearchParams({ dlat: String(place.lat), dlng: String(place.lng), dname: place.name, appname: "route.manus" });
+  const appName = typeof window !== "undefined" ? window.location.origin : "route.manus";
+  const params = new URLSearchParams({ dlat: String(place.lat), dlng: String(place.lng), dname: place.name, appname: appName });
   if (origin) {
     params.set("slat", String(origin.lat));
     params.set("slng", String(origin.lng));
     params.set("sname", originName);
   }
   return `nmap://navigation?${params.toString()}`;
+}
+
+function naverNavigationIntentUrl(place: Place, origin?: { lat: number; lng: number } | null, originName = "현재 위치") {
+  const appName = typeof window !== "undefined" ? window.location.origin : "route.manus";
+  const params = new URLSearchParams({ dlat: String(place.lat), dlng: String(place.lng), dname: place.name, appname: appName });
+  if (origin) {
+    params.set("slat", String(origin.lat));
+    params.set("slng", String(origin.lng));
+    params.set("sname", originName);
+  }
+  return `intent://navigation?${params.toString()}#Intent;scheme=nmap;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.nhn.android.nmap;end`;
 }
 
 function kakaoNavigationUrl(place: Place) {
@@ -986,6 +998,26 @@ export default function Home() {
     if (navigationPlace) rememberNavigationDestination(navigationPlace);
     setIsNavigationConfirmOpen(false);
   };
+  const launchNaverNavigation = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    if (!navigationPlace) return;
+    const place = navigationPlace;
+    const origin = navigationOrigin;
+    startNaverNavigation();
+    const userAgent = navigator.userAgent;
+    if (/Android/i.test(userAgent)) {
+      window.location.href = naverNavigationIntentUrl(place, origin, origin.label);
+      return;
+    }
+    if (/iPhone|iPad|iPod/i.test(userAgent)) {
+      window.location.href = naverNavigationUrl(place, origin, origin.label);
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible") window.location.href = naverMapSearchUrl(place);
+      }, 1200);
+      return;
+    }
+    window.open(naverMapSearchUrl(place), "_blank", "noopener,noreferrer");
+  };
   const openSaveSheet = (place: Place) => { setSelectedPlace(place); setSaveSheetOpen(true); };
   const savePlace = async () => {
     if (!selectedPlace) return;
@@ -1382,7 +1414,7 @@ export default function Home() {
   const renderNaverNavigationConfirmSheet = () => {
     if (!isNavigationConfirmOpen || !navigationPlace) return null;
     const closeConfirm = () => { setIsNavigationConfirmOpen(false); setIsNavigationOriginMapPickerOpen(false); };
-    return <div className="route-overlay route-naver-confirm-overlay" onClick={closeConfirm}><section className="route-naver-confirm-sheet" role="dialog" aria-modal="true" aria-label="네이버 내비 출발 확인" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-naver-confirm-heading"><div><span>NAVER NAVIGATION</span><h3>이 목적지로 출발할까요?</h3><p>네이버 내비 앱에서 실제 길안내를 시작합니다.</p></div><button aria-label="네이버 내비 출발 확인 닫기" onClick={closeConfirm}><X size={17} /></button></div><div className="route-naver-confirm-route"><div><small>출발</small><strong>{navigationOrigin.label}</strong><span>{navigationOrigin.address}</span></div><button className="route-naver-origin-map-trigger" aria-label="지도에서 출발지 선택" onClick={() => setIsNavigationOriginMapPickerOpen((open) => !open)}><MapPin size={14} /> 지도에서 출발지 선택</button><div className="route-navigation-line" /><div><small>도착</small><strong>{navigationPlace.name}</strong><span>{navigationPlace.address}</span></div></div>{isNavigationOriginMapPickerOpen && <section className="route-naver-origin-map-picker" aria-label="지도에서 출발지 선택"><NavigationOriginPickerMap center={{ lat: navigationOrigin.lat, lng: navigationOrigin.lng }} onPick={applyNavigationOriginFromMap} /><button aria-label="현재 위치로 출발지 재설정" onClick={() => { setNavigationOriginOverride(null); setNavigationOriginQuery(""); setIsNavigationOriginMapPickerOpen(false); if (!userLocation) moveToCurrentLocation(); }}><LocateFixed size={14} /> 현재 위치로 되돌리기</button></section>}<div className="route-naver-confirm-distance"><Navigation size={17} /><div><small>ROUTE DISTANCE</small><strong>직선 거리 {formatDistance(navigationDistanceMeters)}</strong><span>실제 도로 거리는 네이버 내비에서 확인합니다.</span></div></div><section className="route-naver-mode-estimates" aria-label="교통수단별 예상 시간"><div><span>TRAVEL MODE</span><strong>교통수단별 예상 시간</strong></div><div className="route-naver-mode-list">{navigationModeEstimates.map(({ mode, minutes }) => { const MetaIcon = travelModeMeta[mode].icon; return <button key={mode} className={travelMode === mode ? "active" : ""} onClick={() => setTravelMode(mode)} aria-pressed={travelMode === mode}><MetaIcon size={16} /><span>{travelModeMeta[mode].label}</span><strong>{formatMinutes(minutes)}</strong></button>; })}</div><p>예상 시간은 직선 거리와 수단별 평균 속도를 기준으로 계산됩니다.</p></section>{recentNavigationDestinations.length > 0 && <section className="route-naver-recent-destinations" aria-label="최근 목적지"><div><span>RECENT DESTINATIONS</span><strong>최근 목적지</strong></div>{recentNavigationDestinations.map((place) => <button key={place.id} aria-label={`${place.name} 최근 목적지 선택`} onClick={() => { setNavigationPlace(place); toast.message(`${place.name}을(를) 목적지로 선택했습니다.`); }}><MapPin size={15} /><span><strong>{place.name}</strong><small>{place.address}</small></span><ChevronRight size={15} /></button>)}</section>}<a className="route-naver-confirm-start" href={naverNavigationUrl(navigationPlace, navigationOrigin, navigationOrigin.label)} onClick={startNaverNavigation}><span>N</span><div><strong>네이버 내비로 출발</strong><small>{travelModeMeta[travelMode].label} 기준 선택됨 · {formatMinutes(selectedNavigationModeMinutes)}</small></div><ExternalLink size={17} /></a><button className="route-naver-confirm-cancel" onClick={closeConfirm}>앱에서 다시 확인</button></section></div>;
+    return <div className="route-overlay route-naver-confirm-overlay" onClick={closeConfirm}><section className="route-naver-confirm-sheet" role="dialog" aria-modal="true" aria-label="네이버 내비 출발 확인" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-naver-confirm-heading"><div><span>NAVER NAVIGATION</span><h3>이 목적지로 출발할까요?</h3><p>네이버 내비 앱에서 실제 길안내를 시작합니다.</p></div><button aria-label="네이버 내비 출발 확인 닫기" onClick={closeConfirm}><X size={17} /></button></div><div className="route-naver-confirm-route"><div><small>출발</small><strong>{navigationOrigin.label}</strong><span>{navigationOrigin.address}</span></div><button className="route-naver-origin-map-trigger" aria-label="지도에서 출발지 선택" onClick={() => setIsNavigationOriginMapPickerOpen((open) => !open)}><MapPin size={14} /> 지도에서 출발지 선택</button><div className="route-navigation-line" /><div><small>도착</small><strong>{navigationPlace.name}</strong><span>{navigationPlace.address}</span></div></div>{isNavigationOriginMapPickerOpen && <section className="route-naver-origin-map-picker" aria-label="지도에서 출발지 선택"><NavigationOriginPickerMap center={{ lat: navigationOrigin.lat, lng: navigationOrigin.lng }} onPick={applyNavigationOriginFromMap} /><button aria-label="현재 위치로 출발지 재설정" onClick={() => { setNavigationOriginOverride(null); setNavigationOriginQuery(""); setIsNavigationOriginMapPickerOpen(false); if (!userLocation) moveToCurrentLocation(); }}><LocateFixed size={14} /> 현재 위치로 되돌리기</button></section>}<div className="route-naver-confirm-distance"><Navigation size={17} /><div><small>ROUTE DISTANCE</small><strong>직선 거리 {formatDistance(navigationDistanceMeters)}</strong><span>실제 도로 거리는 네이버 내비에서 확인합니다.</span></div></div><section className="route-naver-mode-estimates" aria-label="교통수단별 예상 시간"><div><span>TRAVEL MODE</span><strong>교통수단별 예상 시간</strong></div><div className="route-naver-mode-list">{navigationModeEstimates.map(({ mode, minutes }) => { const MetaIcon = travelModeMeta[mode].icon; return <button key={mode} className={travelMode === mode ? "active" : ""} onClick={() => setTravelMode(mode)} aria-pressed={travelMode === mode}><MetaIcon size={16} /><span>{travelModeMeta[mode].label}</span><strong>{formatMinutes(minutes)}</strong></button>; })}</div><p>예상 시간은 직선 거리와 수단별 평균 속도를 기준으로 계산됩니다.</p></section>{recentNavigationDestinations.length > 0 && <section className="route-naver-recent-destinations" aria-label="최근 목적지"><div><span>RECENT DESTINATIONS</span><strong>최근 목적지</strong></div>{recentNavigationDestinations.map((place) => <button key={place.id} aria-label={`${place.name} 최근 목적지 선택`} onClick={() => { setNavigationPlace(place); toast.message(`${place.name}을(를) 목적지로 선택했습니다.`); }}><MapPin size={15} /><span><strong>{place.name}</strong><small>{place.address}</small></span><ChevronRight size={15} /></button>)}</section>}<a className="route-naver-confirm-start" href={naverNavigationUrl(navigationPlace, navigationOrigin, navigationOrigin.label)} onClick={launchNaverNavigation}><span>N</span><div><strong>네이버 내비로 출발</strong><small>{travelModeMeta[travelMode].label} 기준 선택됨 · {formatMinutes(selectedNavigationModeMinutes)}</small></div><ExternalLink size={17} /></a><button className="route-naver-confirm-cancel" onClick={closeConfirm}>앱에서 다시 확인</button></section></div>;
   };
 
   const renderPlaceNavigation = () => {
