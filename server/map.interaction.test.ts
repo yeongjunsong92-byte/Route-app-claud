@@ -31,7 +31,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("map.panTo({ lat: place.lat, lng: place.lng })");
     expect(homeSource).toContain("categoryPinColor(place.category)");
     expect(homeSource).toContain("service.getDetails");
-    expect(homeSource).toContain('fields: ["name", "formatted_address", "formatted_phone_number", "opening_hours", "photos"]');
+    expect(homeSource).toContain('fields: ["name", "formatted_address", "formatted_phone_number", "opening_hours", "photos", "website"]');
     expect(homeSource).toContain("getUrl({ maxWidth: 1200, maxHeight: 900 })");
     expect(homeSource).toContain("route-photo-gallery-overlay");
     expect(homeSource).toContain("route-discovery-controls");
@@ -39,6 +39,12 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("syncMapMarkers(mainMapRef.current, visibleMapPlaces)");
     expect(homeSource).toContain("openCoursePicker");
     expect(homeSource).toContain("route-home-active-trip");
+    expect(homeSource).toContain("naverReservationUrl");
     expect(homeSource).toContain("naverMapSearchUrl");
+    expect(homeSource).toContain("renderScheduleWarnings(selectedCourseScheduleWarnings)");
+    expect(homeSource).toContain("courseStatusLabel[courseStatus]");
+    expect(homeSource).toContain('hours: item.hours || "영업시간 확인"');
+    expect(homeSource).toContain("hours: place.hours");
+    expect(homeSource).toContain("hours: coursePickerPlace.hours");
   });
 });

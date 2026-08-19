@@ -69,4 +69,22 @@ describe("Route course procedures", () => {
     });
     await expect(caller.courses.create({ title: "", items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("rejects a course whose end date is earlier than its start date", async () => {
+    const caller = appRouter.createCaller({
+      ...publicContext(),
+      user: {
+        id: 1,
+        openId: "route-test-user",
+        name: "Route Test",
+        email: "route@test.local",
+        loginMethod: "test",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+    });
+    await expect(caller.courses.create({ title: "기간 테스트", startDate: "2026-09-03", endDate: "2026-09-01", items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

@@ -230,7 +230,8 @@ describe("home place search flow", () => {
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
-    expect(screen.getByRole("link", { name: /네이버에서 예약·문의/ }).getAttribute("href")).toContain("https://map.naver.com/p/search/");
+    expect(screen.getByRole("link", { name: /네이버에서 예약 찾기/ }).getAttribute("href")).toContain("https://search.naver.com/search.naver");
+    expect(screen.getByRole("link", { name: /네이버 지도에서 장소만 검색하기/ }).getAttribute("href")).toContain("https://map.naver.com/p/search/");
 
     await user.click(screen.getByRole("button", { name: "성수 식당 사진 1 확대" }));
     expect(screen.getByRole("dialog", { name: "성수 식당 사진 갤러리" })).toBeTruthy();
@@ -251,5 +252,43 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "코스 보기" }));
     expect(screen.getByRole("heading", { name: "진행 중인 코스" })).toBeTruthy();
     expect(screen.getByText("오늘의 일정")).toBeTruthy();
+  });
+
+  it("manages course dates and status while surfacing schedule conflicts", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
+
+    fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("종료일"), { target: { value: "2026-09-03" } });
+    await user.selectOptions(screen.getByLabelText("여행 상태"), "active");
+    expect((screen.getByLabelText("여행 상태") as HTMLSelectElement).value).toBe("active");
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    fireEvent.change(screen.getByLabelText("방문 시간"), { target: { value: "22:00" } });
+    expect(screen.getByRole("region", { name: "일정 경고" })).toBeTruthy();
+    expect(screen.getByText(/성수 식당의 영업시간/)).toBeTruthy();
+  });
+
+  it("shows the selected course lifecycle on the home active-trip card", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
+
+    fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("종료일"), { target: { value: "2026-09-03" } });
+    await user.selectOptions(screen.getByLabelText("여행 상태"), "active");
+    await user.click(screen.getByRole("button", { name: "뒤로" }));
+    await user.click(screen.getByRole("button", { name: "홈" }));
+
+    expect(screen.getByText("진행 중")).toBeTruthy();
+    expect(screen.getByText(/2026\.09\.01 ~ 2026\.09\.03/)).toBeTruthy();
   });
 });

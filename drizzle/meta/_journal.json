@@ -15,6 +15,20 @@
       "when": 1786699472031,
       "tag": "0001_handy_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787102316692,
+      "tag": "0002_unique_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787103106374,
+      "tag": "0003_freezing_millenium_guard",
+      "breakpoints": true
     }
   ]
 }
