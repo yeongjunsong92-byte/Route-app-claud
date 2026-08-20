@@ -87,4 +87,26 @@ describe("Route course procedures", () => {
     });
     await expect(caller.courses.create({ title: "기간 테스트", startDate: "2026-09-03", endDate: "2026-09-01", items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("rejects invalid social and personal-place inputs before hitting the database", async () => {
+    const caller = appRouter.createCaller({
+      ...publicContext(),
+      user: {
+        id: 1,
+        openId: "route-test-user",
+        name: "Route Test",
+        email: "route@test.local",
+        loginMethod: "test",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+    });
+
+    await expect(caller.people.discover({ query: "x".repeat(101) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.people.toggleFollow({ userId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.clonePublic({ courseId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.places.updateRecord({ savedPlaceId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

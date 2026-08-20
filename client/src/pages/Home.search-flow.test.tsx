@@ -39,13 +39,21 @@ vi.mock("@/lib/trpc", () => {
     { placeId: "p2", name: "오븐 성수", category: "카페", address: "서울 성동구 연무장길 7", lat: 37.545, lng: 127.057, durationMinutes: 60, dayNumber: 1, visitTime: "15:40", estimatedCost: 15000 },
     { placeId: "p3", name: "성수동 스테이크", category: "맛집", address: "서울 성동구 아차산로 403", lat: 37.547, lng: 127.058, durationMinutes: 90, dayNumber: 1, visitTime: "17:00", estimatedCost: 50000 },
   ] };
+  const publishedCourse = { id: 201, ownerId: 2, title: "제주 2박 3일 힐링 코스", region: "제주", coverImage: "https://images.unsplash.com/photo-1471922694854-ff1b63b20054", startDate: null, endDate: null, status: "planned", isPublic: true, authorName: "Route 여행자" };
+  const publishedCourseDetail = { ...publishedCourse, items: [
+    { placeId: "jeju-1", name: "협재 해수욕장", category: "관광지", address: "제주 제주시 한림읍 협재리", lat: 33.394, lng: 126.239, durationMinutes: 60, dayNumber: 1, visitTime: "10:00", estimatedCost: 0 },
+    { placeId: "jeju-2", name: "애월 카페거리", category: "카페", address: "제주 제주시 애월읍", lat: 33.463, lng: 126.31, durationMinutes: 90, dayNumber: 1, visitTime: "12:30", estimatedCost: 15000 },
+    { placeId: "jeju-3", name: "오설록 티 뮤지엄", category: "관광지", address: "제주 서귀포시 안덕면", lat: 33.306, lng: 126.289, durationMinutes: 60, dayNumber: 2, visitTime: "15:00", estimatedCost: 12000 },
+    { placeId: "jeju-4", name: "애월 해안도로", category: "관광지", address: "제주 제주시 애월읍", lat: 33.461, lng: 126.309, durationMinutes: 60, dayNumber: 2, visitTime: "17:30", estimatedCost: 0 },
+  ] };
   const savedPlacesQuery = () => ({ data: [{ id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 }], isLoading: false, isError: false });
   return {
     trpc: {
-      places: { toggleSaved: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : null, isLoading: false, isError: false }) } },
+      places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
+      people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
-      useUtils: () => ({ courses: { mine: { invalidate: vi.fn() } } }),
+      useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
   };
 });
@@ -608,5 +616,18 @@ describe("home place search flow", () => {
 
     expect(screen.getByText("진행 중")).toBeTruthy();
     expect(screen.getByText(/2026\.09\.01 ~ 2026\.09\.03/)).toBeTruthy();
+  });
+
+  it("opens the personal place record editor from a saved place", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
+    await user.click(screen.getByRole("button", { name: /기록 관리/ }));
+
+    expect(screen.getByRole("dialog", { name: "내 장소 기록 관리" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "테스트 저장 장소" })).toBeTruthy();
+    expect(screen.getByText("직접 촬영한 사진")).toBeTruthy();
   });
 });

@@ -15,6 +15,49 @@
   --route-display: "Playfair Display", Georgia, serif;
 }
 
+/* 실제 여행 경험 공유 */
+.route-user-row-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: inherit; text-align: left; }
+.route-user-row-main > span { min-width: 0; flex: 1; }
+.route-social-avatar { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 39px; height: 39px; border-radius: 50%; background: linear-gradient(145deg, #8f7bea, #6351dd); color: #fff; font-size: 14px; font-weight: 800; }
+.route-avatar-row .route-social-avatar { width: 43px; height: 43px; }
+.route-profile-avatar.route-social-avatar { width: 64px; height: 64px; border: 3px solid #fff; font-size: 23px; }
+.route-follow-button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid #ddd8f4; border-radius: 8px; background: #f7f5ff; color: #6351dd; font-size: 10px; font-weight: 800; }
+.route-follow-button.is-following { border-color: #e5e2eb; background: #fff; color: #76717f; }
+.route-social-inline-state { margin: 2px 0 14px; padding: 12px; border: 1px dashed #ddd8e8; border-radius: 10px; background: #fbfaff; color: #85808f; font-size: 11px; line-height: 1.5; }
+.route-friends-search { width: 100%; border: 1px solid #eee; background: #fff; text-align: left; }
+.route-course-origin-note { display: flex; align-items: center; gap: 6px; margin: 12px 18px 0; padding: 9px 10px; border-radius: 9px; background: #f7f5ff; color: #6655bc; font-size: 10px; }
+@media (prefers-reduced-motion: no-preference) { .route-follow-button { transition: transform 160ms ease-out, background 160ms ease-out; } .route-follow-button:active { transform: scale(.97); } }
+
+/* 나만의 장소 기록 */
+.route-saved-place-record { border-bottom: 1px solid #efecf3; }
+.route-saved-place-record .route-place-row { border-bottom: 0; }
+.route-saved-place-record-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 2px 10px 63px; color: #948e9e; font-size: 9px; }
+.route-saved-place-record-meta button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #6554be; font-size: 9px; font-weight: 800; }
+.route-saved-place-record-overlay { z-index: 140; align-items: flex-end; }
+.route-saved-place-record-sheet { width: 100%; max-width: 412px; padding: 10px 18px 24px; border-radius: 22px 22px 0 0; background: #fff; box-shadow: 0 -12px 34px rgba(29,24,48,.23); }
+.route-saved-place-record-sheet > .route-sheet-handle { margin: 0 auto 12px; }
+.route-saved-place-record-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.route-saved-place-record-heading span { display: block; color: #7b68d3; font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.route-saved-place-record-heading h3 { margin: 4px 0 3px; color: #342d43; font-size: 18px; letter-spacing: -.04em; }
+.route-saved-place-record-heading p { margin: 0; color: #938c9e; font-size: 9px; }
+.route-saved-place-record-heading > button { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border: 0; border-radius: 50%; background: #f4f1fb; color: #756c88; }
+.route-saved-place-record-sheet > label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; color: #746d7e; font-size: 9px; font-weight: 800; }
+.route-saved-place-record-sheet input, .route-saved-place-record-sheet textarea { width: 100%; border: 1px solid #e4e0ec; border-radius: 10px; background: #fff; color: #403949; font-size: 11px; outline: none; }
+.route-saved-place-record-sheet input { height: 39px; padding: 0 10px; }
+.route-saved-place-record-sheet textarea { min-height: 72px; padding: 10px; resize: vertical; }
+.route-saved-place-record-sheet input:focus, .route-saved-place-record-sheet textarea:focus { border-color: #a697e6; box-shadow: 0 0 0 3px rgba(99,81,221,.1); }
+.route-saved-place-photo-field { margin: 12px 0; padding: 10px; border: 1px solid #e7e2f1; border-radius: 12px; background: #fbfaff; }
+.route-saved-place-photo-field > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.route-saved-place-photo-field strong { color: #4c4358; font-size: 10px; }.route-saved-place-photo-field small { color: #96909e; font-size: 8px; }
+.route-saved-place-photo-preview { position: relative; overflow: hidden; height: 92px; margin-top: 9px; border-radius: 9px; }
+.route-saved-place-photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.route-saved-place-photo-preview button { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border: 0; border-radius: 50%; background: rgba(30,24,44,.7); color: #fff; }
+.route-saved-place-photo-upload { display: inline-flex; align-items: center; gap: 5px; height: 31px; margin-top: 9px; padding: 0 9px; border: 1px solid #dcd4f7; border-radius: 8px; background: #fff; color: #6653c2; font-size: 9px; font-weight: 800; }
+.route-saved-place-photo-upload input { display: none; }
+.route-saved-place-record-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 7px; margin-top: 14px; }
+.route-saved-place-record-actions button { height: 42px; border: 0; border-radius: 10px; background: #6351dd; color: #fff; font-size: 11px; font-weight: 800; }
+.route-saved-place-record-actions button.secondary { background: #f1eff5; color: #77717f; }
+
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
 body { margin: 0; background: #e7e6e1; color: var(--route-text); font-family: var(--route-font); -webkit-font-smoothing: antialiased; }

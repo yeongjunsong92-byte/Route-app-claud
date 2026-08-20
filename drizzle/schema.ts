@@ -17,6 +17,10 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
+  bio: text("bio"),
+  avatarUrl: text("avatarUrl"),
+  avatarKey: varchar("avatarKey", { length: 512 }),
+  travelStyle: varchar("travelStyle", { length: 100 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -37,11 +41,29 @@ export const savedPlaces = mysqlTable(
     lng: double("lng"),
     hours: varchar("hours", { length: 255 }),
     note: text("note"),
+    customTitle: varchar("customTitle", { length: 255 }),
+    personalPhotoUrl: text("personalPhotoUrl"),
+    personalPhotoKey: varchar("personalPhotoKey", { length: 512 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ({
     ownerIndex: index("saved_places_user_idx").on(table.userId),
     placeIndex: uniqueIndex("saved_places_user_place_unique").on(table.userId, table.placeId),
+  }),
+);
+
+export const follows = mysqlTable(
+  "follows",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    followerId: int("followerId").notNull(),
+    followingId: int("followingId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    followerIndex: index("follows_follower_idx").on(table.followerId),
+    followingIndex: index("follows_following_idx").on(table.followingId),
+    followerFollowingUnique: uniqueIndex("follows_follower_following_unique").on(table.followerId, table.followingId),
   }),
 );
 
@@ -58,6 +80,7 @@ export const courses = mysqlTable(
     endDate: timestamp("endDate"),
     status: mysqlEnum("status", ["planned", "active", "completed"]).default("planned").notNull(),
     isPublic: boolean("isPublic").default(false).notNull(),
+    sourceCourseId: int("sourceCourseId"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -108,6 +131,7 @@ export const courseSaves = mysqlTable(
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type Follow = typeof follows.$inferSelect;
 export type SavedPlace = typeof savedPlaces.$inferSelect;
 export type InsertSavedPlace = typeof savedPlaces.$inferInsert;
 export type Course = typeof courses.$inferSelect;
