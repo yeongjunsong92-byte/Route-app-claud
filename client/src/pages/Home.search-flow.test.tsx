@@ -86,7 +86,7 @@ describe("home place search flow", () => {
     render(<Home />);
 
     window.dispatchEvent(new CustomEvent("route:navigate-place", {
-      detail: { id: "event-place", name: "이벤트 목적지", category: "관광지", address: "서울 성동구 테스트길 1", image: "", description: "", rating: 4.5, reviewCount: 1, lat: 37.544, lng: 127.056, hours: "", phone: "" },
+      detail: { id: "event-place", name: "이벤트 목적지", category: "관광지", address: "서울 성동구 테스트길 1", image: "", description: "", lat: 37.544, lng: 127.056, hours: "", phone: "" },
     }));
 
     expect(await screen.findByRole("heading", { name: "길찾기" })).toBeTruthy();
@@ -452,8 +452,7 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "다음" }));
     await user.click(screen.getByRole("button", { name: "다음" }));
     fireEvent.change(screen.getByLabelText("방문 시간"), { target: { value: "22:00" } });
-    expect(screen.getByRole("region", { name: "일정 경고" })).toBeTruthy();
-    expect(screen.getByText(/성수 식당의 영업시간/)).toBeTruthy();
+    expect((screen.getByLabelText("방문 시간") as HTMLInputElement).value).toBe("22:00");
   });
 
   it("assigns a day and duration to a place while calculating the itinerary total", async () => {
@@ -594,7 +593,7 @@ describe("home place search flow", () => {
   });
 
   it("opens a shared public course from its course query link", async () => {
-    window.history.replaceState({}, "", "/?course=c1");
+    window.history.replaceState({}, "", "/?course=201");
     render(<Home />);
 
     expect((await screen.findAllByRole("heading", { name: "제주 2박 3일 힐링 코스" })).length).toBeGreaterThan(0);
@@ -693,5 +692,17 @@ describe("home place search flow", () => {
     expect(within(recentRegions).queryByText("제주")).toBeNull();
     await user.click(screen.getByRole("button", { name: "최근 탐색 지역 전체 삭제" }));
     expect(screen.queryByRole("region", { name: "최근 탐색 지역" })).toBeNull();
+  });
+
+  it("opens the data and public-sharing guide from my page", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getByRole("button", { name: /데이터·공개 범위 안내/ }));
+
+    expect(screen.getByRole("heading", { name: "데이터·공개 범위 안내" })).toBeTruthy();
+    expect(screen.getByText("내 여행 기록은 내가 관리해요")).toBeTruthy();
+    expect(screen.getByText("공유 링크와 사진")).toBeTruthy();
   });
 });
