@@ -53,7 +53,7 @@ vi.mock("@/lib/trpc", () => {
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
       courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
-      useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
+      useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, public: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
   };
 });
@@ -629,5 +629,18 @@ describe("home place search flow", () => {
     expect(screen.getByRole("dialog", { name: "내 장소 기록 관리" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "테스트 저장 장소" })).toBeTruthy();
     expect(screen.getByText("직접 촬영한 사진")).toBeTruthy();
+  });
+
+  it("lets a creator choose the public visibility scope before saving a course", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: /새 코스/ }));
+
+    const visibility = screen.getByRole("group", { name: "공개 범위" });
+    expect(within(visibility).getByRole("button", { name: /비공개/ })).toBeTruthy();
+    await user.click(within(visibility).getByRole("button", { name: /전체 공개/ }));
+    expect(within(visibility).getByRole("button", { name: /전체 공개/ }).className).toContain("active");
   });
 });
