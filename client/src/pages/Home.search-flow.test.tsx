@@ -63,6 +63,7 @@ import Home from "./Home";
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem("route-recent-place-searches");
+  window.localStorage.removeItem("route-recent-map-regions");
   window.localStorage.removeItem("route-navigation-origin-favorites");
   window.localStorage.removeItem("route-navigation-recent-destinations");
   window.history.replaceState({}, "", "/");
@@ -666,5 +667,24 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "지도 빈 영역" }));
     expect(screen.getByRole("button", { name: "전체 지도 닫기" })).toBeTruthy();
+  });
+
+  it("shows and manages recent map regions in the region picker", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("route-recent-map-regions", JSON.stringify([
+      { label: "제주", lat: 33.4996, lng: 126.5312 },
+      { label: "부산 해운대", lat: 35.1587, lng: 129.1604 },
+    ]));
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "지역 선택" }));
+    const recentRegions = screen.getByRole("region", { name: "최근 탐색 지역" });
+    expect(within(recentRegions).getByText("제주")).toBeTruthy();
+    expect(within(recentRegions).getByText("부산 해운대")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "제주 최근 탐색 지역 삭제" }));
+    expect(within(recentRegions).queryByText("제주")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "최근 탐색 지역 전체 삭제" }));
+    expect(screen.queryByRole("region", { name: "최근 탐색 지역" })).toBeNull();
   });
 });

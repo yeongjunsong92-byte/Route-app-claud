@@ -36,28 +36,40 @@ function courseSummary(course: Awaited<ReturnType<typeof getCourseDetails>>) {
   return `${course.region || "여행"} · ${dateRange} · ${places}${placeNames ? ` · ${placeNames}` : ""}`;
 }
 
+function getPreviewPhotoUrl(course: NonNullable<Awaited<ReturnType<typeof getCourseDetails>>>) {
+  const firstPlacePhoto = course.items.find((item) => typeof item.imageUrl === "string" && /^https?:\/\//i.test(item.imageUrl))?.imageUrl;
+  if (firstPlacePhoto) return firstPlacePhoto;
+  return typeof course.coverImage === "string" && /^https?:\/\//i.test(course.coverImage) ? course.coverImage : null;
+}
+
 function renderPreviewSvg(course: NonNullable<Awaited<ReturnType<typeof getCourseDetails>>>) {
   const summary = courseSummary(course);
   const title = truncate(course.title, 26);
   const author = truncate(course.authorName || "Route 여행자", 24);
   const places = course.items.slice(0, 3).map((item: typeof course.items[number], index: number) => `${index + 1}. ${truncate(item.name || "여행 장소", 20)}`);
   const itemRows = places.length ? places : ["여행 코스를 준비하고 있어요"];
+  const previewPhotoUrl = getPreviewPhotoUrl(course);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${escapeXml(title)} Route 공유 미리보기">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#352a6f"/><stop offset=".55" stop-color="#6351dd"/><stop offset="1" stop-color="#9a8ef0"/></linearGradient>
     <filter id="blur"><feGaussianBlur stdDeviation="38"/></filter>
+    <clipPath id="place-photo"><rect x="86" y="84" width="372" height="462" rx="28"/></clipPath>
   </defs>
   <rect width="1200" height="630" fill="url(#bg)"/>
   <circle cx="1090" cy="100" r="170" fill="#f5cb76" opacity=".28" filter="url(#blur)"/>
   <circle cx="120" cy="620" r="220" fill="#9fe4df" opacity=".2" filter="url(#blur)"/>
   <rect x="70" y="62" width="1060" height="506" rx="38" fill="#ffffff" fill-opacity=".94"/>
-  <text x="126" y="143" fill="#6351dd" font-family="Arial, sans-serif" font-size="25" font-weight="700" letter-spacing="4">ROUTE · TRAVEL PLAN</text>
-  <text x="126" y="230" fill="#24212d" font-family="Arial, sans-serif" font-size="58" font-weight="700">${escapeXml(title)}</text>
-  <text x="126" y="285" fill="#696472" font-family="Arial, sans-serif" font-size="28">${escapeXml(truncate(summary, 60))}</text>
-  <line x1="126" y1="334" x2="1074" y2="334" stroke="#e7e2f4" stroke-width="2"/>
-  ${itemRows.map((item: string) => `<circle cx="145" cy="397" r="9" fill="#6351dd"/><text x="174" y="407" fill="#3f3948" font-family="Arial, sans-serif" font-size="30">${escapeXml(item)}</text>`).map((row: string, index: number) => row.replaceAll('cy="397"', `cy="${397 + index * 56}"`).replaceAll('y="407"', `y="${407 + index * 56}"`)).join("\n  ")}
-  <text x="126" y="522" fill="#847c94" font-family="Arial, sans-serif" font-size="24">${escapeXml(author)}님의 여행 기록</text>
+  <rect x="86" y="84" width="372" height="462" rx="28" fill="#ede9fb"/>
+  ${previewPhotoUrl ? `<image href="${escapeXml(previewPhotoUrl)}" x="86" y="84" width="372" height="462" preserveAspectRatio="xMidYMid slice" clip-path="url(#place-photo)"/>` : `<path d="M146 470 238 366l72 72 62-63 46 47v124H146z" fill="#c8c0e8" opacity=".72"/><circle cx="352" cy="188" r="36" fill="#d9d2f1"/>`}
+  <rect x="104" y="470" width="184" height="42" rx="21" fill="#fff" fill-opacity=".92"/>
+  <text x="126" y="497" fill="#6351dd" font-family="Arial, sans-serif" font-size="19" font-weight="700">대표 장소 사진</text>
+  <text x="514" y="143" fill="#6351dd" font-family="Arial, sans-serif" font-size="25" font-weight="700" letter-spacing="4">ROUTE · TRAVEL PLAN</text>
+  <text x="514" y="230" fill="#24212d" font-family="Arial, sans-serif" font-size="54" font-weight="700">${escapeXml(title)}</text>
+  <text x="514" y="284" fill="#696472" font-family="Arial, sans-serif" font-size="26">${escapeXml(truncate(summary, 48))}</text>
+  <line x1="514" y1="330" x2="1074" y2="330" stroke="#e7e2f4" stroke-width="2"/>
+  ${itemRows.map((item: string) => `<circle cx="533" cy="389" r="9" fill="#6351dd"/><text x="562" y="399" fill="#3f3948" font-family="Arial, sans-serif" font-size="28">${escapeXml(item)}</text>`).map((row: string, index: number) => row.replaceAll('cy="389"', `cy="${389 + index * 54}"`).replaceAll('y="399"', `y="${399 + index * 54}"`)).join("\n  ")}
+  <text x="514" y="522" fill="#847c94" font-family="Arial, sans-serif" font-size="24">${escapeXml(author)}님의 여행 기록</text>
   <circle cx="1042" cy="488" r="48" fill="#6351dd"/><path d="M1023 488h38M1042 469v38" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
 </svg>`;
 }

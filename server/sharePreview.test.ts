@@ -15,7 +15,7 @@ const publicCourse = {
   startDate: new Date("2026-09-01T00:00:00.000Z"),
   endDate: new Date("2026-09-03T00:00:00.000Z"),
   items: [
-    { name: "협재 해수욕장" },
+    { name: "협재 해수욕장", imageUrl: "https://images.example.com/hyeopjae.jpg" },
     { name: "애월 카페거리" },
   ],
 } as Awaited<ReturnType<typeof getCourseDetails>> & { isPublic: boolean };
@@ -61,6 +61,8 @@ describe("public course share preview", () => {
     expect(response.headers.get("content-type")).toContain("image/svg+xml");
     expect(svg).toContain('width="1200" height="630"');
     expect(svg).toContain("제주 2박 3일 힐링 코스");
+    expect(svg).toContain('href="https://images.example.com/hyeopjae.jpg"');
+    expect(svg).toContain("대표 장소 사진");
   });
 
   it("does not expose metadata for a private course", async () => {
