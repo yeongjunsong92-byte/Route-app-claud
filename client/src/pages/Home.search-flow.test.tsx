@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { toast } from "sonner";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -60,12 +60,17 @@ vi.mock("@/lib/trpc", () => {
 
 import Home from "./Home";
 
+beforeEach(() => {
+  window.localStorage.setItem("route-map-tutorial-completed", "true");
+});
+
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem("route-recent-place-searches");
   window.localStorage.removeItem("route-recent-map-regions");
   window.localStorage.removeItem("route-navigation-origin-favorites");
   window.localStorage.removeItem("route-navigation-recent-destinations");
+  window.localStorage.removeItem("route-map-tutorial-completed");
   window.history.replaceState({}, "", "/");
   vi.restoreAllMocks();
 });
@@ -704,5 +709,40 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "데이터·공개 범위 안내" })).toBeTruthy();
     expect(screen.getByText("내 여행 기록은 내가 관리해요")).toBeTruthy();
     expect(screen.getByText("공유 링크와 사진")).toBeTruthy();
+  });
+
+  it("opens Twitter and Facebook share pages with a public course link", async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+    await user.click(screen.getByRole("button", { name: "코스 공유" }));
+    await user.click(screen.getByRole("button", { name: "트위터에 코스 공유" }));
+    await user.click(screen.getByRole("button", { name: "페이스북에 코스 공유" }));
+
+    expect(open).toHaveBeenCalledWith(expect.stringContaining("twitter.com/intent/tweet"), "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith(expect.stringContaining(encodeURIComponent("/share/course/201")), "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith(expect.stringContaining("facebook.com/sharer/sharer.php"), "_blank", "noopener,noreferrer");
+  });
+
+  it("shows the first-map tutorial, stores completion, and lets users reopen it from my page", async () => {
+    const user = userEvent.setup();
+    window.localStorage.removeItem("route-map-tutorial-completed");
+    render(<Home />);
+
+    const tutorial = screen.getByRole("dialog", { name: "지도 사용 안내" });
+    expect(within(tutorial).getByText("지도를 움직여 여행지를 찾아보세요")).toBeTruthy();
+    await user.click(within(tutorial).getByRole("button", { name: "다음" }));
+    expect(within(screen.getByRole("dialog", { name: "지도 사용 안내" })).getByText("장소 핀을 누르면 간단한 정보를 확인해요")).toBeTruthy();
+    await user.click(within(screen.getByRole("dialog", { name: "지도 사용 안내" })).getByRole("button", { name: "다음" }));
+    await user.click(within(screen.getByRole("dialog", { name: "지도 사용 안내" })).getByRole("button", { name: "지도 시작하기" }));
+    expect(window.localStorage.getItem("route-map-tutorial-completed")).toBe("true");
+    expect(screen.queryByRole("dialog", { name: "지도 사용 안내" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getByRole("button", { name: "지도 사용 가이드 다시 보기" }));
+    expect(screen.getByRole("dialog", { name: "지도 사용 안내" })).toBeTruthy();
   });
 });
