@@ -61,5 +61,11 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('aria-label="클러스터 장소 목록"');
     expect(homeSource).toContain("toggleRecentRegionFavorite");
     expect(homeSource).toContain('aria-label="최근 탐색 지역"');
+    expect(homeSource).toContain("tutorialSpotlightMarkerRef");
+    expect(homeSource).toContain('title: isClusterStep ? "튜토리얼: 겹친 장소 클러스터"');
+    expect(homeSource).toContain('aria-label="예시 코스"');
+    expect(homeSource).toContain("route-tutorial-example-route");
+    expect(homeSource).toContain("const nearbyOrigin = userLocation || selectedRegion");
+    expect(homeSource).toContain("normalized.sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b))");
   });
 });

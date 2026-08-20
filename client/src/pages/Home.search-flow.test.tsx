@@ -735,6 +735,8 @@ describe("home place search flow", () => {
 
     const tutorial = screen.getByRole("dialog", { name: "지도 사용 안내" });
     expect(within(tutorial).getByText("지도를 움직여 여행지를 찾아보세요")).toBeTruthy();
+    expect(within(tutorial).getByText("성수 오후 산책")).toBeTruthy();
+    expect(within(tutorial).getByText("장소 저장 → 코스에 추가 → 시간순 일정 완성")).toBeTruthy();
     await user.click(within(tutorial).getByRole("button", { name: "다음" }));
     expect(within(screen.getByRole("dialog", { name: "지도 사용 안내" })).getByText("장소 핀을 누르면 간단한 정보를 확인해요")).toBeTruthy();
     await user.click(within(screen.getByRole("dialog", { name: "지도 사용 안내" })).getByRole("button", { name: "다음" }));

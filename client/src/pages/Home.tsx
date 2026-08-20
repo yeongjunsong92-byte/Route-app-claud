@@ -611,6 +611,7 @@ export default function Home() {
   const mainMapRef = useRef<google.maps.Map | null>(null);
   const placeMarkerRefs = useRef<google.maps.Marker[]>([]);
   const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const tutorialSpotlightMarkerRef = useRef<google.maps.Marker | null>(null);
   const mapClusterZoomListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const initialLocationRequestRef = useRef(false);
   const sheetDragStartRef = useRef<number | null>(null);
@@ -799,6 +800,31 @@ export default function Home() {
     if (mainMapRef.current) syncMapMarkers(mainMapRef.current, visibleMapPlaces);
   }, [syncMapMarkers, visibleMapPlaces]);
   useEffect(() => {
+    tutorialSpotlightMarkerRef.current?.setMap(null);
+    tutorialSpotlightMarkerRef.current = null;
+    const map = mainMapRef.current;
+    if (!isMapTutorialOpen || !map || !window.google?.maps || !visibleMapPlaces.length) return;
+
+    const isClusterStep = mapTutorialStep === 2;
+    const spotlightPlaces = isClusterStep ? visibleMapPlaces.slice(0, Math.min(3, visibleMapPlaces.length)) : [visibleMapPlaces[Math.min(mapTutorialStep, visibleMapPlaces.length - 1)]];
+    const position = spotlightPlaces.reduce((total, place) => ({ lat: total.lat + place.lat / spotlightPlaces.length, lng: total.lng + place.lng / spotlightPlaces.length }), { lat: 0, lng: 0 });
+    const label = isClusterStep ? `${spotlightPlaces.length}` : "";
+    const spotlightSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="76" height="76" viewBox="0 0 76 76" xmlns="http://www.w3.org/2000/svg"><circle cx="38" cy="38" r="34" fill="#6351DD" fill-opacity=".16"/><circle cx="38" cy="38" r="27" fill="#6351DD" fill-opacity=".28"/><circle cx="38" cy="38" r="20" fill="#6351DD" stroke="#FFFFFF" stroke-width="3"/>${isClusterStep ? `<text x="38" y="44" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="18" font-weight="700" text-anchor="middle">${label}</text>` : `<path d="M38 24c-5.5 0-10 4.4-10 9.9 0 7 10 16.6 10 16.6s10-9.6 10-16.6C48 28.4 43.5 24 38 24Z" fill="#FFFFFF"/><circle cx="38" cy="33.5" r="3.5" fill="#6351DD"/>`}</svg>`)}`;
+    tutorialSpotlightMarkerRef.current = new google.maps.Marker({
+      map,
+      position,
+      title: isClusterStep ? "튜토리얼: 겹친 장소 클러스터" : `튜토리얼: ${spotlightPlaces[0].name} 장소 핀`,
+      icon: { url: spotlightSvg, scaledSize: new google.maps.Size(66, 66), anchor: new google.maps.Point(33, 33) },
+      zIndex: 250,
+    });
+    map.panTo(position);
+    if (isClusterStep) map.setZoom(Math.min(map.getZoom() || 14, 14));
+    return () => {
+      tutorialSpotlightMarkerRef.current?.setMap(null);
+      tutorialSpotlightMarkerRef.current = null;
+    };
+  }, [isMapTutorialOpen, mapTutorialStep, visibleMapPlaces]);
+  useEffect(() => {
     const map = mainMapRef.current;
     mapClusterZoomListenerRef.current?.remove();
     mapClusterZoomListenerRef.current = null;
@@ -816,6 +842,7 @@ export default function Home() {
     clearMapMarkers();
     mapClusterZoomListenerRef.current?.remove();
     currentLocationMarkerRef.current?.setMap(null);
+    tutorialSpotlightMarkerRef.current?.setMap(null);
   }, [clearMapMarkers]);
   useEffect(() => {
     const keyword = query.trim();
@@ -1595,6 +1622,7 @@ export default function Home() {
       const location = { lat: position.coords.latitude, lng: position.coords.longitude };
       setUserLocation(location);
       setSelectedRegion(null);
+      setSortByDistance(true);
       map.panTo(location);
       map.setZoom(15);
       currentLocationMarkerRef.current?.setMap(null);
@@ -1675,6 +1703,7 @@ export default function Home() {
         return;
       }
       const typeByCategory: Record<string, string> = { "맛집": "restaurant", "카페": "cafe", "관광지": "tourist_attraction", "숙소": "lodging" };
+      const isCurrentLocationSearch = Boolean(userLocation && Math.abs(origin.lat - userLocation.lat) < 0.00001 && Math.abs(origin.lng - userLocation.lng) < 0.00001);
       setPlacesLoading(true);
       const service = new google.maps.places.PlacesService(map);
       service.nearbySearch({ location: origin, radius: 5000, type: typeByCategory[category] }, (results, status) => {
@@ -1691,8 +1720,9 @@ export default function Home() {
           const lng = result.geometry?.location?.lng();
           if (lat === undefined || lng === undefined) return [];
           const openNow = getGooglePlaceOpenNow(result.opening_hours);
-          return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || category, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `현재 위치 주변 ${category} 검색 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
+          return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || category, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${category} 검색 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
         });
+        normalized.sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b));
         setHasLiveSearch(true);
         setLivePlaces(normalized);
         setMapPreviewPlace(normalized[0] || null);
@@ -1701,7 +1731,7 @@ export default function Home() {
         map.setZoom(14);
       });
     };
-    const nearbyOrigin = selectedRegion || userLocation;
+    const nearbyOrigin = userLocation || selectedRegion;
     if (nearbyOrigin) runNearbySearch(nearbyOrigin);
     else {
       toast.message("현재 위치를 확인하거나 원하는 지역을 선택해 주세요.");
@@ -1763,13 +1793,13 @@ export default function Home() {
     ];
     const current = steps[mapTutorialStep];
     const isLastStep = mapTutorialStep === steps.length - 1;
-    return <div className="route-map-tutorial-overlay" role="dialog" aria-modal="true" aria-label="지도 사용 안내"><div className="route-map-tutorial-spotlight" /><motion.section className="route-map-tutorial-card" initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}><div className="route-map-tutorial-progress" aria-label={`${mapTutorialStep + 1} / ${steps.length}`}>{steps.map((_, index) => <span key={index} className={index <= mapTutorialStep ? "active" : ""} />)}</div><button className="route-map-tutorial-skip" onClick={closeMapTutorial}>건너뛰기</button><AnimatePresence mode="wait" initial={false}><motion.div className="route-map-tutorial-step" key={mapTutorialStep} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}><div className="route-map-tutorial-icon">{current.icon}</div><span>{current.eyebrow}</span><h3>{current.title}</h3><p>{current.description}</p></motion.div></AnimatePresence><div className="route-map-tutorial-actions">{mapTutorialStep > 0 && <button onClick={() => setMapTutorialStep((step) => step - 1)}>이전</button>}<button className="primary" onClick={() => isLastStep ? closeMapTutorial() : setMapTutorialStep((step) => step + 1)}>{isLastStep ? "지도 시작하기" : "다음"} <ChevronRight size={15} /></button></div></motion.section></div>;
+    return <div className="route-map-tutorial-overlay" role="dialog" aria-modal="true" aria-label="지도 사용 안내"><div className="route-map-tutorial-spotlight" /><motion.section className="route-map-tutorial-card" initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}><div className="route-map-tutorial-progress" aria-label={`${mapTutorialStep + 1} / ${steps.length}`}>{steps.map((_, index) => <span key={index} className={index <= mapTutorialStep ? "active" : ""} />)}</div><button className="route-map-tutorial-skip" onClick={closeMapTutorial}>건너뛰기</button><AnimatePresence mode="wait" initial={false}><motion.div className="route-map-tutorial-step" key={mapTutorialStep} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}><div className="route-map-tutorial-icon">{current.icon}</div><span>{current.eyebrow}</span><h3>{current.title}</h3><p>{current.description}</p><aside className="route-tutorial-example-route" aria-label="예시 코스"><div><span>EXAMPLE ROUTE</span><strong>성수 오후 산책</strong></div><ol><li><b>1</b>성수 식당</li><li><b>2</b>오븐 성수</li><li><b>3</b>서울숲</li></ol><small>장소 저장 → 코스에 추가 → 시간순 일정 완성</small></aside></motion.div></AnimatePresence><div className="route-map-tutorial-actions">{mapTutorialStep > 0 && <button onClick={() => setMapTutorialStep((step) => step - 1)}>이전</button>}<button className="primary" onClick={() => isLastStep ? closeMapTutorial() : setMapTutorialStep((step) => step + 1)}>{isLastStep ? "지도 시작하기" : "다음"} <ChevronRight size={15} /></button></div></motion.section></div>;
   };
   const renderMapScreen = () => <div className={`route-screen route-map-screen sheet-${sheetMode}${isMapFullscreen ? " is-map-fullscreen" : ""}`}>
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => searchNearbyCategory(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch && userLocation ? `현재 위치 주변 ${filter} 추천` : hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : userLocation ? "현재 위치 주변 추천" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
     {renderRegionPicker()}
   </div>;
 
