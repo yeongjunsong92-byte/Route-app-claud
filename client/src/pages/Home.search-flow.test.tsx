@@ -16,11 +16,11 @@ vi.mock("@/_core/hooks/useAuth", () => ({
 
 vi.mock("@/const", () => ({ startLogin: vi.fn() }));
 vi.mock("@/components/Map", () => ({
-  MapView: ({ fallback, onMapReady }: { fallback?: React.ReactNode; onMapReady?: (map: any) => void }) => {
+  MapView: ({ fallback, onMapReady, onMapClick }: { fallback?: React.ReactNode; onMapReady?: (map: any) => void; onMapClick?: () => void }) => {
     React.useEffect(() => {
       onMapReady?.({ panTo: () => undefined, setZoom: () => undefined, getZoom: () => 15 });
     }, []);
-    return <div data-testid="map-view">{fallback}</div>;
+    return <div data-testid="map-view">{onMapClick && <button aria-label="지도 빈 영역" onClick={onMapClick} />}{fallback}</div>;
   },
 }));
 vi.mock("framer-motion", () => ({
@@ -258,9 +258,11 @@ describe("home place search flow", () => {
 
     try {
       render(<Home />);
-      await user.click(screen.getByRole("button", { name: "현재 위치" }));
       expect(await screen.findByRole("heading", { name: "현재 위치 권한이 필요합니다" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "다시 시도" })).toBeTruthy();
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "지역 선택" }));
+      expect(screen.getByRole("region", { name: "지역 직접 선택" })).toBeTruthy();
+      expect(screen.getByRole("textbox", { name: "지역 검색" })).toBeTruthy();
     } finally {
       Object.defineProperty(navigator, "geolocation", { configurable: true, value: originalGeolocation });
     }
@@ -558,6 +560,20 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "코스 이미지 저장" })).toBeTruthy();
   });
 
+  it("copies a public course through the OG preview sharing URL", async () => {
+    const user = userEvent.setup();
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue(null);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+    await user.click(screen.getByRole("button", { name: "코스 공유" }));
+    await user.click(screen.getByRole("button", { name: "공유 링크 복사" }));
+
+    expect(prompt).toHaveBeenCalledWith("공유 링크를 복사하세요.", expect.stringContaining("/share/course/201"));
+  });
+
   it("shows the expected travel time inside the selected day timeline", async () => {
     const user = userEvent.setup();
     render(<Home />);
@@ -642,5 +658,13 @@ describe("home place search flow", () => {
     expect(within(visibility).getByRole("button", { name: /비공개/ })).toBeTruthy();
     await user.click(within(visibility).getByRole("button", { name: /전체 공개/ }));
     expect(within(visibility).getByRole("button", { name: /전체 공개/ }).className).toContain("active");
+  });
+
+  it("opens a full map view when the map canvas is tapped", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "지도 빈 영역" }));
+    expect(screen.getByRole("button", { name: "전체 지도 닫기" })).toBeTruthy();
   });
 });

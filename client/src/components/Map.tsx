@@ -65,6 +65,7 @@ interface MapViewProps {
   initialCenter?: google.maps.LatLngLiteral;
   initialZoom?: number;
   onMapReady?: (map: google.maps.Map) => void;
+  onMapClick?: (event: google.maps.MapMouseEvent) => void;
   fallback?: ReactNode;
 }
 
@@ -73,17 +74,23 @@ export function MapView({
   initialCenter = { lat: 37.7749, lng: -122.4194 },
   initialZoom = 12,
   onMapReady,
+  onMapClick,
   fallback,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const onMapReadyRef = useRef(onMapReady);
+  const onMapClickRef = useRef(onMapClick);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tilesLoaded, setTilesLoaded] = useState(false);
 
   useEffect(() => {
     onMapReadyRef.current = onMapReady;
   }, [onMapReady]);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   useEffect(() => {
     let active = true;
@@ -101,7 +108,7 @@ export function MapView({
   }, []);
 
   useEffect(() => {
-    if (status !== "ready" || !mapContainer.current || !window.google?.maps) return;
+    if (status !== "ready" || !mapContainer.current || !window.google?.maps || map.current) return;
     try {
       const mapInstance = new window.google.maps.Map(mapContainer.current, {
         zoom: initialZoom,
@@ -118,17 +125,25 @@ export function MapView({
         if (hasGoogleTile) setTilesLoaded(true);
       };
       const tilesListener = mapInstance.addListener("tilesloaded", () => window.setTimeout(checkForTiles, 180));
+      const clickListener = mapInstance.addListener("click", (event: google.maps.MapMouseEvent) => onMapClickRef.current?.(event));
       const tileCheckInterval = window.setInterval(checkForTiles, 400);
       onMapReadyRef.current?.(mapInstance);
       return () => {
         tilesListener.remove();
+        clickListener.remove();
         window.clearInterval(tileCheckInterval);
       };
     } catch (error) {
       console.warn("[Route Map] Map initialization failed; using fallback map.", error);
       setStatus("error");
     }
-  }, [initialCenter.lat, initialCenter.lng, initialZoom, status]);
+  }, [status]);
+
+  useEffect(() => {
+    if (!map.current) return;
+    map.current.setCenter(initialCenter);
+    map.current.setZoom(initialZoom);
+  }, [initialCenter.lat, initialCenter.lng, initialZoom]);
 
   if (status !== "ready") {
     return (

@@ -19,6 +19,7 @@ import {
   Heart,
   LocateFixed,
   Link2,
+  Maximize2,
   MapPin,
   MoreHorizontal,
   Navigation,
@@ -42,6 +43,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { trpc } from "@/lib/trpc";
 import { getScheduleWarnings } from "@/lib/courseSchedule";
 import { toast } from "sonner";
+import "@/map-experience.css";
 
 type Screen = "home" | "map" | "my-courses" | "friends" | "mypage" | "search" | "place-detail" | "place-navigation" | "my-places" | "course-create" | "course-detail" | "user-search" | "profile" | "public-courses" | "public-course-detail" | "saved-courses" | "edit-course" | "active-course";
 type Tab = "home" | "map" | "courses" | "friends" | "mypage";
@@ -69,6 +71,7 @@ type CourseItem = { name: string; time: string; duration: string; cost: number; 
 type CourseStatus = "planned" | "active" | "completed";
 type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean };
 type NavigationOrigin = { id: string; label: string; address: string; lat: number; lng: number };
+type RegionSelection = { label: string; lat: number; lng: number };
 type RecentNavigationDestination = Place & { lastStartedAt?: number; isFavorite?: boolean };
 
 const mockPlaces: Place[] = [
@@ -526,6 +529,11 @@ export default function Home() {
   const [sortByDistance, setSortByDistance] = useState(false);
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<RegionSelection | null>(null);
+  const [isRegionPickerOpen, setIsRegionPickerOpen] = useState(false);
+  const [regionQuery, setRegionQuery] = useState("");
+  const [regionPredictions, setRegionPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [navigationPlace, setNavigationPlace] = useState<Place | null>(null);
   const [travelMode, setTravelMode] = useState<TravelMode>("driving");
@@ -703,7 +711,8 @@ export default function Home() {
     const filtered = filter === "전체" ? source : source.filter((place) => place.category === filter);
     return filtered.filter((place, index, items) => items.findIndex((candidate) => candidate.id === place.id) === index);
   }, [filter, filteredPlaces, hasLiveSearch, livePlaces, savedMapPlaces]);
-  const distanceOrigin = userLocation || DEFAULT_MAP_CENTER;
+  const activeMapCenter = selectedRegion || userLocation || DEFAULT_MAP_CENTER;
+  const distanceOrigin = activeMapCenter;
   const getPlaceDistance = useCallback((place: Place) => distanceInMeters(distanceOrigin, place), [distanceOrigin]);
   const visibleMapPlaces = useMemo(() => {
     const next = mapPlaces.filter((place) => !openNowOnly || place.openNow === true);
@@ -718,6 +727,7 @@ export default function Home() {
     }
     setMapPreviewPlace(place);
     setSheetMode("peek");
+    setIsMapFullscreen(false);
   }, []);
   const clearMapMarkers = useCallback(() => {
     placeMarkerRefs.current.forEach((marker) => marker.setMap(null));
@@ -775,6 +785,20 @@ export default function Home() {
     });
     return () => { active = false; };
   }, [mapReadyTick, query, screen]);
+  useEffect(() => {
+    const keyword = regionQuery.trim();
+    if (!isRegionPickerOpen || keyword.length < 2 || !window.google?.maps?.places?.AutocompleteService) {
+      setRegionPredictions([]);
+      return;
+    }
+    let active = true;
+    const service = new google.maps.places.AutocompleteService();
+    service.getPlacePredictions({ input: keyword, componentRestrictions: { country: "kr" } }, (predictions, status) => {
+      if (!active) return;
+      setRegionPredictions(status === google.maps.places.PlacesServiceStatus.OK && predictions ? predictions.slice(0, 5) : []);
+    });
+    return () => { active = false; };
+  }, [isRegionPickerOpen, mapReadyTick, regionQuery]);
   const totalCost = coursePlaces.reduce((total, place) => total + (Number(courseCosts[place.id]) || 0), 0);
   const courseDayCount = calculateCourseDayCount(courseStartDate, courseEndDate);
   const totalDurationMinutes = coursePlaces.reduce((total, place) => total + (Number(courseDurations[place.id]) || 60), 0);
@@ -1197,7 +1221,10 @@ export default function Home() {
   const sharedCourseTitle = (selectedCourseQuery.data as any)?.title || selectedCourse.title;
   const sharedCourseDateRange = formatCourseDateRange((selectedCourseQuery.data as any)?.startDate || selectedCourse.startDate, (selectedCourseQuery.data as any)?.endDate || selectedCourse.endDate);
   const isSelectedCoursePublic = Boolean((selectedCourseQuery.data as any)?.isPublic ?? (selectedCourse as any).isPublic);
-  const courseShareLink = `${window.location.origin}${window.location.pathname}?course=${encodeURIComponent(selectedCourse.id)}`;
+  const sharedCourseId = Number(selectedCourse.id);
+  const courseShareLink = Number.isInteger(sharedCourseId) && sharedCourseId > 0
+    ? `${window.location.origin}/share/course/${sharedCourseId}`
+    : `${window.location.origin}${window.location.pathname}?course=${encodeURIComponent(selectedCourse.id)}`;
   const supportsNativeShare = typeof (navigator as Navigator & { share?: unknown }).share === "function";
   const copyCourseShareLink = async () => {
     if (!isSelectedCoursePublic) {
@@ -1507,15 +1534,17 @@ export default function Home() {
     navigator.geolocation.getCurrentPosition((position) => {
       const location = { lat: position.coords.latitude, lng: position.coords.longitude };
       setUserLocation(location);
+      setSelectedRegion(null);
       map.panTo(location);
       map.setZoom(15);
       currentLocationMarkerRef.current?.setMap(null);
+      const currentLocationPinSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="48" height="58" viewBox="0 0 48 58" xmlns="http://www.w3.org/2000/svg"><path d="M24 2C13.5 2 5 10.4 5 20.8 5 34.6 24 54 24 54s19-19.4 19-33.2C43 10.4 34.5 2 24 2Z" fill="#1E73E8" stroke="#FFFFFF" stroke-width="4"/><circle cx="24" cy="21" r="8" fill="#FFFFFF"/><circle cx="24" cy="21" r="3.4" fill="#1E73E8"/></svg>`)}`;
       currentLocationMarkerRef.current = new google.maps.Marker({
         map,
         position: location,
         title: "현재 위치",
-        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#2f80ed", fillOpacity: 1, strokeColor: "#ffffff", strokeOpacity: 1, strokeWeight: 3, scale: 9 },
-        zIndex: 99,
+        icon: { url: currentLocationPinSvg, scaledSize: new google.maps.Size(40, 48), anchor: new google.maps.Point(20, 47) },
+        zIndex: 120,
       });
       onResolved?.(location);
       toast.success("현재 위치로 이동했습니다.");
@@ -1524,6 +1553,37 @@ export default function Home() {
       else toast.error("현재 위치를 가져오지 못했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.");
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   }
+  const chooseRegionPrediction = (prediction: google.maps.places.AutocompletePrediction) => {
+    const map = mainMapRef.current;
+    if (!map || !window.google?.maps) {
+      toast.error("지도를 불러오는 중입니다. 잠시 후 다시 선택해 주세요.");
+      return;
+    }
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ placeId: prediction.place_id }, (results, status) => {
+      const location = results?.[0]?.geometry.location;
+      if (status !== google.maps.GeocoderStatus.OK || !location) {
+        toast.error("선택한 지역을 찾지 못했습니다.");
+        return;
+      }
+      const region = { label: prediction.description, lat: location.lat(), lng: location.lng() };
+      setSelectedRegion(region);
+      setUserLocation(null);
+      currentLocationMarkerRef.current?.setMap(null);
+      currentLocationMarkerRef.current = null;
+      map.panTo(region);
+      map.setZoom(results?.[0]?.geometry.viewport ? 12 : 14);
+      setHasLiveSearch(true);
+      setLivePlaces([]);
+      setMapPreviewPlace(null);
+      setSheetMode("expanded");
+      setIsMapFullscreen(false);
+      setIsRegionPickerOpen(false);
+      setRegionQuery("");
+      setRegionPredictions([]);
+      toast.success(`${prediction.structured_formatting.main_text || prediction.description}을 기준으로 지도를 보여드릴게요.`);
+    });
+  };
   const searchNearbyCategory = (category: string) => {
     setFilter(category);
     if (category === "전체") {
@@ -1566,9 +1626,10 @@ export default function Home() {
         map.setZoom(14);
       });
     };
-    if (userLocation) runNearbySearch(userLocation);
+    const nearbyOrigin = selectedRegion || userLocation;
+    if (nearbyOrigin) runNearbySearch(nearbyOrigin);
     else {
-      toast.message("현재 위치를 확인한 뒤 주변 장소를 보여드릴게요.");
+      toast.message("현재 위치를 확인하거나 원하는 지역을 선택해 주세요.");
       moveToCurrentLocation(runNearbySearch);
     }
   };
@@ -1581,7 +1642,11 @@ export default function Home() {
     const distance = event.clientY - sheetDragStartRef.current;
     sheetDragStartRef.current = null;
     if (distance < -40) setSheetMode("expanded");
-    else if (distance > 55) setSheetMode((mode) => mode === "expanded" ? "peek" : "hidden");
+    else if (distance > 55) setSheetMode((mode) => {
+      const next = mode === "expanded" ? "peek" : "hidden";
+      if (next === "hidden") setIsMapFullscreen(true);
+      return next;
+    });
   };
   const renderDiscoveryControls = () => <div className="route-discovery-controls"><button className={sortByDistance ? "active" : ""} onClick={() => setSortByDistance((value) => !value)}><ArrowUpDown size={14} /> 거리순 {sortByDistance ? "ON" : ""}</button><button className={openNowOnly ? "active" : ""} onClick={() => setOpenNowOnly((value) => !value)}><Clock3 size={14} /> 영업 중</button></div>;
   const renderScheduleWarnings = (warnings = courseScheduleWarnings) => <>{screen === "course-create" && courseStep >= 3 && <><section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>{courseStep === 3 && <section className="route-course-day-planner"><div><span>DAY PLANNING</span><h3>일차와 체류시간</h3></div>{coursePlaces.map((place) => <div key={place.id}><strong>{place.name}</strong>{renderPlanningFields(place)}</div>)}</section>}</>}{warnings.length > 0 && <section className="route-schedule-warnings" aria-label="일정 경고"><div><AlertTriangle size={17} /><span><strong>일정 확인이 필요해요</strong><small>방문 시간과 장소 영업시간을 다시 확인하세요.</small></span></div>{warnings.slice(0, 3).map((warning) => <p key={`${warning.placeId}-${warning.message}`}>{warning.message}</p>)}</section>}</>;
@@ -1591,17 +1656,19 @@ export default function Home() {
   const renderCourseTravelSummary = () => coursePlaces.length > 1 ? <><>{renderTravelModeSelector()}</><section className="route-course-travel-summary" aria-live="polite" aria-label="순서 변경에 따른 예상 이동시간"><div className="route-course-travel-heading"><div><Navigation size={17} /><span><small>{travelModeMeta[travelMode].summary} · 현재 순서 예상 이동</small><strong>{formatMinutes(courseTravelMinutes)} · {formatDistance(courseTravelDistanceMeters)}</strong></span></div><small>장소 순서를 바꾸면 즉시 갱신됩니다.</small></div>{courseRouteSegments.map((segment, index) => <div className="route-course-travel-leg" key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</section></> : null;
   const renderRouteRecommendation = () => coursePlaces.length > 2 ? <section className="route-optimization-card" aria-label="효율 경로 추천"><div className="route-optimization-heading"><span className="route-optimization-icon"><WandSparkles size={17} /></span><div><span>ROUTE RECOMMENDATION</span><h3>이동이 적은 순서를 추천해요</h3></div></div><section className="route-optimization-comparison" aria-label="추천 동선 전후 비교"><div><small>현재 순서</small><strong>{formatMinutes(courseTravelMinutes)}</strong><span>{formatDistance(courseTravelDistanceMeters)}</span></div><Navigation size={15} /><div className="recommended"><small>추천 순서</small><strong>{formatMinutes(recommendedTravelMinutes)}</strong><span>{formatDistance(recommendedTravelDistanceMeters)}</span></div></section>{routeRecommendationChanged ? <><p>현재 순서보다 <strong>{formatDistance(routeDistanceSaved)}</strong>, 약 <strong>{routeMinutesSaved}분</strong> 이동을 줄일 수 있어요.</p><div className="route-optimization-order">{recommendedCoursePlaces.map((place, index) => <span key={place.id}><b>{index + 1}</b>{place.name}</span>)}</div><div className="route-optimization-actions"><button onClick={applyRouteRecommendation}><WandSparkles size={15} /> 추천 순서 적용</button><button className="share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={15} /> 공유</button></div></> : <><p className="is-current"><Navigation size={15} /> 현재 순서가 추천 동선과 같습니다.</p><button className="route-optimization-current-share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={14} /> 현재 동선 공유</button></>}</section> : null;
   const renderCourseMapPlanner = () => coursePlaces.length > 1 ? <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section> : null;
-  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={userLocation || DEFAULT_MAP_CENTER} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => moveToCurrentLocation()}><LocateFixed size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button></div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt={`${mapPreviewPlace.name} 대표 사진`} /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · {getPlaceDistanceLabel(mapPreviewPlace)}</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button aria-label={`${mapPreviewPlace.name} 길찾기`} onClick={() => openPlaceNavigation(mapPreviewPlace)}><Navigation size={15} /> 길찾기</button><button onClick={() => openCoursePicker(mapPreviewPlace)}><Plus size={15} /> 코스 선택</button>{savedPlaceIds.has(mapPreviewPlace.id) && <button className="route-map-current-course-add" onClick={() => addSavedPlaceToCurrentCourse(mapPreviewPlace)}><Plus size={15} /> {coursePlaces.some((place) => place.id === mapPreviewPlace.id) ? "현재 코스에 담김" : "현재 코스에 담기"}</button>}</div></motion.div>}</>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
+  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={activeMapCenter} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} onMapClick={enablePlacePreview && screen === "map" ? () => { setSheetMode("hidden"); setIsMapFullscreen(true); } : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => { setMapPreviewPlace(place); setSheetMode("peek"); setIsMapFullscreen(false); } : undefined} />}/>{enablePlacePreview && <><div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => moveToCurrentLocation()}><LocateFixed size={18} /></button><button aria-label="지역 선택" onClick={() => setIsRegionPickerOpen(true)}><MapPin size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button>{isMapFullscreen && <button aria-label="전체 지도 닫기" onClick={() => { setIsMapFullscreen(false); setSheetMode("peek"); }}><X size={18} /></button>}</div>{mapPreviewPlace && sheetMode !== "hidden" && <motion.div className="route-map-place-preview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}><button className="route-map-place-preview-main" onClick={() => openPlace(mapPreviewPlace)}><img src={mapPreviewPlace.image} alt={`${mapPreviewPlace.name} 대표 사진`} /><span><small>{mapPreviewPlace.category}</small><strong>{mapPreviewPlace.name}</strong><em>★ {mapPreviewPlace.rating || "평점 정보 없음"} · {getPlaceDistanceLabel(mapPreviewPlace)}</em></span><ChevronRight size={17} /></button><div className="route-map-place-preview-actions"><button onClick={() => openSaveSheet(mapPreviewPlace)}><Bookmark size={15} /> 저장</button><button aria-label={`${mapPreviewPlace.name} 길찾기`} onClick={() => openPlaceNavigation(mapPreviewPlace)}><Navigation size={15} /> 길찾기</button><button onClick={() => openCoursePicker(mapPreviewPlace)}><Plus size={15} /> 코스 선택</button>{savedPlaceIds.has(mapPreviewPlace.id) && <button className="route-map-current-course-add" onClick={() => addSavedPlaceToCurrentCourse(mapPreviewPlace)}><Plus size={15} /> {coursePlaces.some((place) => place.id === mapPreviewPlace.id) ? "현재 코스에 담김" : "현재 코스에 담기"}</button>}</div></motion.div>}</>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
 
-  const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => setIsLocationPermissionHelpOpen(false)}>나중에</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
+  const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요. 권한을 허용하지 않아도 지역을 직접 선택할 수 있습니다.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => { setIsLocationPermissionHelpOpen(false); setIsRegionPickerOpen(true); }}><MapPin size={14} /> 지역 선택</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
+  const renderRegionPicker = () => isRegionPickerOpen && <div className="route-overlay route-region-picker-overlay" onClick={() => setIsRegionPickerOpen(false)}><section className="route-region-picker" aria-label="지역 직접 선택" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-region-picker-heading"><div><span>MAP LOCATION</span><h3>어느 지역을 보고 싶으세요?</h3><p>현재 위치 권한 없이도 지역을 선택해 주변 장소를 탐색할 수 있어요.</p></div><button aria-label="지역 선택 닫기" onClick={() => setIsRegionPickerOpen(false)}><X size={17} /></button></div><div className="route-region-search"><Search size={17} /><input autoFocus aria-label="지역 검색" value={regionQuery} onChange={(event) => setRegionQuery(event.target.value)} placeholder="예: 서울역, 제주, 부산 해운대" /><button aria-label="지역 검색어 지우기" onClick={() => { setRegionQuery(""); setRegionPredictions([]); }}><X size={15} /></button></div>{regionPredictions.length ? <div className="route-region-results">{regionPredictions.map((prediction) => <button key={prediction.place_id} onClick={() => chooseRegionPrediction(prediction)}><MapPin size={17} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={16} /></button>)}</div> : <div className="route-region-empty"><MapPin size={21} /><strong>지역이나 역 이름을 검색하세요</strong><span>선택한 지역을 기준으로 맛집·카페·관광지·숙소를 찾을 수 있어요.</span></div>}{selectedRegion && <button className="route-region-current" onClick={() => { setSelectedRegion(null); setIsRegionPickerOpen(false); moveToCurrentLocation(); }}><LocateFixed size={15} /> 현재 위치로 다시 전환</button>}</section></div>;
   const renderCourseShareSheet = () => isCourseShareOpen && <div className="route-overlay route-course-share-overlay" onClick={() => setIsCourseShareOpen(false)}><section className="route-course-share-sheet" aria-label="코스 공유" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-course-share-heading"><div><span>SHARE THIS ROUTE</span><h3>{sharedCourseTitle}</h3><p>여행 일정을 링크나 이미지로 친구에게 전달하세요.</p></div><button aria-label="코스 공유 닫기" onClick={() => setIsCourseShareOpen(false)}><X size={17} /></button></div><button aria-label="공유 링크 복사" onClick={() => void copyCourseShareLink()}><span className="link"><Link2 size={19} /></span><div><strong>공유 링크 복사</strong><small>친구에게 바로 보낼 수 있는 코스 링크입니다.</small></div><Copy size={16} /></button><button aria-label="코스 이미지 저장" onClick={exportCourseImage}><span className="image"><Download size={19} /></span><div><strong>코스 이미지 저장</strong><small>한 장의 여행 일정 이미지로 저장합니다.</small></div><ChevronRight size={16} /></button>{supportsNativeShare && <button aria-label="기기 공유" onClick={() => void shareCourse()}><span className="native"><Share2 size={19} /></span><div><strong>다른 앱으로 공유</strong><small>설치된 메신저나 SNS를 선택할 수 있습니다.</small></div><ChevronRight size={16} /></button>}</section></div>;
 
   const renderCoursePicker = () => coursePickerPlace && <div className="route-overlay route-course-picker-overlay" onClick={() => setCoursePickerPlace(null)}><div className="route-course-picker" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-course-picker-heading"><div><span>ADD TO TRIP</span><h3>{coursePickerPlace.name}</h3><p>추가할 여행 코스를 선택하세요.</p></div><button aria-label="코스 선택 닫기" onClick={() => setCoursePickerPlace(null)}><X size={17} /></button></div><button className="route-course-picker-create" onClick={createCourseFromPicker}><span><Plus size={18} /></span><div><strong>새 코스 만들기</strong><small>이 장소부터 새 여행을 시작합니다.</small></div><ChevronRight size={16} /></button>{courseList.length ? <div className="route-course-picker-list"><p>내 여행 코스</p>{courseList.map((course) => <button key={course.id} onClick={() => void appendPlaceToOwnedCourse(course)} disabled={appendPlaceMutation.isPending}><img src={course.image} alt="" /><span><strong>{course.title}</strong><small>{courseStatusLabel[course.status || "planned"]} · {formatCourseDateRange(course.startDate, course.endDate)}</small></span><Plus size={16} /></button>)}</div> : <div className="route-course-picker-empty"><Calendar size={19} /><span><strong>선택할 저장 코스가 없습니다.</strong><small>새 코스를 만들어 이 장소부터 일정에 담아보세요.</small></span></div>}<button className="route-course-picker-cancel" onClick={() => setCoursePickerPlace(null)}>취소</button></div></div>;
-  const renderMapScreen = () => <div className={`route-screen route-map-screen sheet-${sheetMode}`}>
+  const renderMapScreen = () => <div className={`route-screen route-map-screen sheet-${sheetMode}${isMapFullscreen ? " is-map-fullscreen" : ""}`}>
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => searchNearbyCategory(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>필터를 해제하거나 다른 키워드로 찾아보세요.</span></div>}</div>}
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
+    {renderRegionPicker()}
   </div>;
 
   const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}{!query.trim() && !hasLiveSearch && recentSearches.length > 0 && <section className="route-recent-searches"><div className="route-recent-searches-heading"><div><span>RECENT</span><h2>최근 검색어</h2></div><button aria-label="최근 검색어 전체 삭제" onClick={clearRecentSearches}>전체 삭제</button></div>{recentSearches.map((term) => <div className="route-recent-search-row" key={term}><button className="route-recent-search-run" onClick={() => { setQuery(term); searchPlaces(term); }}><Clock3 size={15} /><span>{term}</span><ChevronRight size={15} /></button><button className="route-recent-search-delete" aria-label={`${term} 삭제`} onClick={() => removeRecentSearch(term)}><X size={14} /></button></div>)}</section>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderDiscoveryControls()}{renderMap(true, true)}<div className="route-search-list">{visibleMapPlaces.map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;

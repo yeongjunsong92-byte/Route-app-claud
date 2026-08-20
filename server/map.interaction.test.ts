@@ -22,10 +22,10 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("route-sheet-place-glance");
     expect(homeSource).toContain("mapPreviewPlace.hours");
     expect(homeSource).toContain('setSheetMode("expanded")');
-    expect(homeSource).toContain('setSheetMode((mode) => mode === "expanded" ? "peek" : "hidden")');
+    expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');
-    expect(homeSource).toContain("const pinSvg");
-    expect(homeSource).toContain('route-map-screen sheet-${sheetMode}');
+    expect(homeSource).toContain("currentLocationPinSvg");
+    expect(homeSource).toContain('route-map-screen sheet-${sheetMode}${isMapFullscreen');
     expect(homeSource).toContain("new google.maps.places.AutocompleteService()");
     expect(homeSource).toContain("service.getPlacePredictions");
     expect(homeSource).toContain("map.panTo({ lat: place.lat, lng: place.lng })");
