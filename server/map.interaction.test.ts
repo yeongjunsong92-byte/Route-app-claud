@@ -57,5 +57,9 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("route-day-map-context");
     expect(homeSource).toContain("copyCourseShareLink");
     expect(homeSource).toContain("exportCourseImage");
+    expect(homeSource).toContain("setClusterPreviewPlaces(group.points)");
+    expect(homeSource).toContain('aria-label="클러스터 장소 목록"');
+    expect(homeSource).toContain("toggleRecentRegionFavorite");
+    expect(homeSource).toContain('aria-label="최근 탐색 지역"');
   });
 });

@@ -37,6 +37,7 @@ function courseSummary(course: Awaited<ReturnType<typeof getCourseDetails>>) {
 }
 
 function getPreviewPhotoUrl(course: NonNullable<Awaited<ReturnType<typeof getCourseDetails>>>) {
+  if (typeof course.shareImageUrl === "string" && /^https?:\/\//i.test(course.shareImageUrl)) return course.shareImageUrl;
   const firstPlacePhoto = course.items.find((item) => typeof item.imageUrl === "string" && /^https?:\/\//i.test(item.imageUrl))?.imageUrl;
   if (firstPlacePhoto) return firstPlacePhoto;
   return typeof course.coverImage === "string" && /^https?:\/\//i.test(course.coverImage) ? course.coverImage : null;

@@ -43,6 +43,13 @@
       "when": 1787203180745,
       "tag": "0005_awesome_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787233885885,
+      "tag": "0006_brainy_frightful_four",
+      "breakpoints": true
     }
   ]
 }

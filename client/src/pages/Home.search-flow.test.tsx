@@ -659,6 +659,9 @@ describe("home place search flow", () => {
     expect(within(visibility).getByRole("button", { name: /비공개/ })).toBeTruthy();
     await user.click(within(visibility).getByRole("button", { name: /전체 공개/ }));
     expect(within(visibility).getByRole("button", { name: /전체 공개/ }).className).toContain("active");
+    const shareImagePicker = screen.getByRole("region", { name: "공유 미리보기 대표 사진" });
+    await user.click(within(shareImagePicker).getByRole("button", { name: "오븐 성수 공유 미리보기 대표 사진" }));
+    expect(within(shareImagePicker).getByRole("button", { name: "오븐 성수 공유 미리보기 대표 사진" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("opens a full map view when the map canvas is tapped", async () => {
@@ -681,6 +684,10 @@ describe("home place search flow", () => {
     const recentRegions = screen.getByRole("region", { name: "최근 탐색 지역" });
     expect(within(recentRegions).getByText("제주")).toBeTruthy();
     expect(within(recentRegions).getByText("부산 해운대")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "부산 해운대 즐겨찾기 고정" }));
+    expect(screen.getByRole("button", { name: "부산 해운대 즐겨찾기 해제" })).toBeTruthy();
+    expect(within(recentRegions).getAllByRole("article")[0]?.textContent).toContain("부산 해운대");
 
     await user.click(screen.getByRole("button", { name: "제주 최근 탐색 지역 삭제" }));
     expect(within(recentRegions).queryByText("제주")).toBeNull();
