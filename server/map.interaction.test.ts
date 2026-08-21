@@ -68,6 +68,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("const nearbyOrigin = userLocation || selectedRegion");
     expect(homeSource).toContain("}).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b))");
     expect(homeSource).toContain("function loadNearbyPlaces(origin");
+    expect(homeSource.indexOf("function categoryFromPlaceTypes")).toBeLessThan(homeSource.indexOf("function loadNearbyPlaces"));
     expect(homeSource).toContain('loadNearbyPlaces(location, "전체", true)');
     expect(homeSource).toContain('const searchTypes = category === "전체" ? ["tourist_attraction", "restaurant", "cafe"]');
     expect(homeSource).toContain('aria-label="주변 장소 추천 카테고리"');

@@ -114,6 +114,13 @@ function getGooglePlaceOpenNow(openingHours: unknown): boolean | undefined {
   }
 }
 
+function categoryFromPlaceTypes(types?: string[]) {
+  if (types?.some((type) => ["cafe", "bakery", "coffee_shop"].includes(type))) return "카페";
+  if (types?.some((type) => ["restaurant", "meal_takeaway", "food"].includes(type))) return "맛집";
+  if (types?.some((type) => ["lodging", "hotel"].includes(type))) return "숙소";
+  return "관광지";
+}
+
 function distanceInMeters(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
   const radians = (value: number) => (value * Math.PI) / 180;
   const earthRadius = 6371000;
@@ -1532,12 +1539,6 @@ export default function Home() {
   const clearRecentSearches = () => {
     setRecentSearches([]);
     persistRecentSearches([]);
-  };
-  const categoryFromPlaceTypes = (types?: string[]) => {
-    if (types?.some((type) => ["cafe", "bakery", "coffee_shop"].includes(type))) return "카페";
-    if (types?.some((type) => ["restaurant", "meal_takeaway", "food"].includes(type))) return "맛집";
-    if (types?.some((type) => ["lodging", "hotel"].includes(type))) return "숙소";
-    return "관광지";
   };
   const searchPlaces = (keywordOverride = query) => {
     const keyword = keywordOverride.trim();
