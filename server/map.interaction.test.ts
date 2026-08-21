@@ -69,8 +69,9 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("}).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b))");
     expect(homeSource).toContain("function loadNearbyPlaces(origin");
     expect(homeSource).toContain('loadNearbyPlaces(location, "전체", true)');
-    expect(homeSource).toContain('if (category !== "전체") request.type = typeByCategory[category]');
+    expect(homeSource).toContain('const searchTypes = category === "전체" ? ["tourist_attraction", "restaurant", "cafe"]');
+    expect(homeSource).toContain('aria-label="주변 장소 추천 카테고리"');
     expect(homeSource).toContain("loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch)");
-    expect(homeSource).toContain('현재 위치 주변 ${filter} 추천');
+    expect(homeSource).toContain('현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페"');
   });
 });

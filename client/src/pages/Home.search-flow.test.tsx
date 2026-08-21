@@ -276,6 +276,7 @@ describe("home place search flow", () => {
   });
 
   it("automatically replaces the bottom sheet with distance-sorted nearby recommendations after current location is allowed", async () => {
+    const user = userEvent.setup();
     const originalGeolocation = navigator.geolocation;
     const originalGoogle = (window as typeof window & { google?: unknown }).google;
     class Marker {
@@ -298,9 +299,13 @@ describe("home place search flow", () => {
     });
     try {
       render(<Home />);
-      await waitFor(() => expect(screen.getByText("현재 위치 주변 전체 추천")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText("현재 위치 주변 여행지·음식점·카페 추천")).toBeTruthy());
       const recommendationRows = screen.getAllByRole("group", { name: /장소 작업/ });
       expect(recommendationRows.map((row) => row.getAttribute("aria-label"))).toEqual(["가까운 카페 장소 작업", "조금 먼 카페 장소 작업"]);
+      expect(screen.getByRole("tablist", { name: "주변 장소 카테고리" })).toBeTruthy();
+      await user.click(screen.getByRole("tab", { name: "여행지" }));
+      await waitFor(() => expect(screen.getByText("현재 위치 주변 여행지 추천")).toBeTruthy());
+      expect(screen.getByRole("tab", { name: "여행지" }).getAttribute("aria-selected")).toBe("true");
     } finally {
       Object.defineProperty(navigator, "geolocation", { configurable: true, value: originalGeolocation });
       Object.defineProperty(window, "google", { configurable: true, value: originalGoogle });

@@ -1615,33 +1615,42 @@ export default function Home() {
       return;
     }
     const typeByCategory: Record<string, string> = { "맛집": "restaurant", "카페": "cafe", "관광지": "tourist_attraction", "숙소": "lodging" };
+    const categoryLabel = category === "전체" ? "여행지·음식점·카페" : category === "맛집" ? "음식점" : category === "관광지" ? "여행지" : category;
+    const searchTypes = category === "전체" ? ["tourist_attraction", "restaurant", "cafe"] : [typeByCategory[category] || "tourist_attraction"];
     setPlacesLoading(true);
     const service = new google.maps.places.PlacesService(map);
     const request: google.maps.places.PlaceSearchRequest = { location: origin, radius: 5000 };
-    if (category !== "전체") request.type = typeByCategory[category];
-    service.nearbySearch(request, (results, status) => {
+    const collected: google.maps.places.PlaceResult[] = [];
+    let completedSearches = 0;
+    const finishNearbySearch = () => {
       setPlacesLoading(false);
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+      if (!collected.length) {
         setHasLiveSearch(true);
         setLivePlaces([]);
         setSheetMode("expanded");
-        toast.message(`${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변에 ${category === "전체" ? "추천 장소" : category} 결과가 없습니다.`);
+        toast.message(`${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변에 ${categoryLabel} 결과가 없습니다.`);
         return;
       }
-      const normalized = results.slice(0, 12).flatMap((result, index): Place[] => {
+      const uniqueResults = collected.filter((result, index, entries) => entries.findIndex((candidate) => candidate.place_id === result.place_id) === index);
+      const normalized = uniqueResults.flatMap((result, index): Place[] => {
         const lat = result.geometry?.location?.lat();
         const lng = result.geometry?.location?.lng();
         if (lat === undefined || lng === undefined) return [];
         const openNow = getGooglePlaceOpenNow(result.opening_hours);
-        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || category, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${category === "전체" ? "추천" : category} 검색 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
-      }).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b));
+        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || categoryLabel, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${categoryLabel} 추천 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
+      }).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b)).slice(0, 12);
       setHasLiveSearch(true);
       setLivePlaces(normalized);
       setMapPreviewPlace(normalized[0] || null);
       setSheetMode("expanded");
       map.panTo(origin);
       map.setZoom(14);
-    });
+    };
+    searchTypes.forEach((type) => service.nearbySearch({ ...request, type }, (results, status) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK && results?.length) collected.push(...results);
+      completedSearches += 1;
+      if (completedSearches === searchTypes.length) finishNearbySearch();
+    }));
   }
   function moveToCurrentLocation(onResolved?: (location: { lat: number; lng: number }) => void) {
     const map = mainMapRef.current;
@@ -1751,6 +1760,7 @@ export default function Home() {
       return next;
     });
   };
+  const renderNearbyCategoryPicker = () => <section className="route-nearby-category-picker" aria-label="주변 장소 추천 카테고리"><div><span>NEARBY PICKS</span><strong>무엇을 찾고 있나요?</strong></div><div role="tablist" aria-label="주변 장소 카테고리">{[{ value: "전체", label: "추천" }, { value: "관광지", label: "여행지" }, { value: "맛집", label: "음식점" }, { value: "카페", label: "카페" }, { value: "숙소", label: "숙소" }].map((item) => <button key={item.value} role="tab" aria-selected={filter === item.value} className={filter === item.value ? "active" : ""} onClick={() => searchNearbyCategory(item.value)}>{item.label}</button>)}</div></section>;
   const renderDiscoveryControls = () => <div className="route-discovery-controls"><button className={sortByDistance ? "active" : ""} onClick={() => setSortByDistance((value) => !value)}><ArrowUpDown size={14} /> 거리순 {sortByDistance ? "ON" : ""}</button><button className={openNowOnly ? "active" : ""} onClick={() => setOpenNowOnly((value) => !value)}><Clock3 size={14} /> 영업 중</button></div>;
   const renderScheduleWarnings = (warnings = courseScheduleWarnings) => <>{screen === "course-create" && courseStep >= 3 && <><section className="route-duration-summary"><div><Clock3 size={17} /><span><small>전체 예상 소요시간</small><strong>{formatTotalDuration(totalDurationMinutes)}</strong></span></div><div>{Array.from({ length: courseDayCount }, (_, index) => <span key={index + 1}>Day {index + 1} · {formatTotalDuration(dayDurationMinutes[index + 1] || 0)}</span>)}</div></section>{courseStep === 3 && <section className="route-course-day-planner"><div><span>DAY PLANNING</span><h3>일차와 체류시간</h3></div>{coursePlaces.map((place) => <div key={place.id}><strong>{place.name}</strong>{renderPlanningFields(place)}</div>)}</section>}</>}{warnings.length > 0 && <section className="route-schedule-warnings" aria-label="일정 경고"><div><AlertTriangle size={17} /><span><strong>일정 확인이 필요해요</strong><small>방문 시간과 장소 영업시간을 다시 확인하세요.</small></span></div>{warnings.slice(0, 3).map((warning) => <p key={`${warning.placeId}-${warning.message}`}>{warning.message}</p>)}</section>}</>;
   const renderPlanningFields = (place: Place) => <div className="route-planning-fields"><label>일차<select aria-label={`${place.name} 일차`} value={courseItemDays[place.id] || 1} onChange={(event) => setCourseItemDays((current) => ({ ...current, [place.id]: Number(event.target.value) }))}>{Array.from({ length: courseDayCount }, (_, index) => <option key={index + 1} value={index + 1}>Day {index + 1}</option>)}</select></label><label>체류 시간<select aria-label={`${place.name} 체류 시간`} value={courseDurations[place.id] || "60"} onChange={(event) => setCourseDurations((current) => ({ ...current, [place.id]: event.target.value }))}>{[30, 60, 90, 120, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{formatTotalDuration(minutes)}</option>)}</select></label></div>;
@@ -1797,7 +1807,7 @@ export default function Home() {
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => searchNearbyCategory(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch && userLocation ? `현재 위치 주변 ${filter} 추천` : hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : userLocation ? "현재 위치 주변 추천" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch && userLocation ? `현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페" : filter === "맛집" ? "음식점" : filter === "관광지" ? "여행지" : filter} 추천` : hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : userLocation ? "현재 위치 주변 추천" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderNearbyCategoryPicker()}{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
     {renderRegionPicker()}
   </div>;
 
