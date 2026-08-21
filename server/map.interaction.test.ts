@@ -24,6 +24,8 @@ describe("Route map interactions", () => {
     expect(homeSource).not.toContain("route-map-place-preview");
     expect(homeSource).toContain("isMapCategoryBarOpen");
     expect(homeSource).toContain('aria-label={isMapCategoryBarOpen ? "지도 카테고리 접기" : "지도 카테고리 펼치기"}');
+    expect(homeSource).toContain("isNearbyCategoryPickerOpen");
+    expect(homeSource).toContain('aria-label={isNearbyCategoryPickerOpen ? "주변 추천 카테고리 접기" : "주변 추천 카테고리 펼치기"}');
     expect(homeSource).toContain('setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');

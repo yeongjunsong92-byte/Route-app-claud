@@ -82,7 +82,7 @@
 
 .route-map-screen.is-map-fullscreen { position: fixed; z-index: 80; inset: 0; width: 100%; max-width: none; min-height: 100dvh; background: #eef0ed; }
 .route-map-screen.is-map-fullscreen .route-map-search { width: calc(100% - 92px); margin-right: 76px; opacity: 1; pointer-events: auto; }
-.route-map-screen.is-map-fullscreen .route-map-category-bar { opacity: 0; pointer-events: none; }
+.route-map-screen.is-map-fullscreen .route-map-category-bar { top: 66px; padding-right: 76px; opacity: 1; pointer-events: auto; }.route-map-screen.is-map-fullscreen .route-map-category-bar .route-filter-row { mask-image: linear-gradient(90deg,#000 0,#000 calc(100% - 16px),transparent 100%); -webkit-mask-image: linear-gradient(90deg,#000 0,#000 calc(100% - 16px),transparent 100%); }
 .route-map-screen.is-map-fullscreen .route-map-box { position: absolute; inset: 0; height: 100dvh; margin: 0; border-radius: 0; }
 .route-map-screen.is-map-fullscreen .route-real-map, .route-map-screen.is-map-fullscreen .route-map-live, .route-map-screen.is-map-fullscreen .route-map-live-canvas { height: 100%; border-radius: 0; }
 .route-map-screen.is-map-fullscreen .route-map-floating-controls { top: 18px; right: 15px; }

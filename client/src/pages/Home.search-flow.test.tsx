@@ -173,6 +173,20 @@ describe("home place search flow", () => {
     expect(within(categoryFilter).getByRole("button", { name: "전체" }).className).toContain("active");
   });
 
+  it("collapses and expands nearby-sheet categories while preserving the selected category", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "주변 추천 카테고리 접기" }));
+    expect(screen.getByRole("button", { name: "주변 추천 카테고리 펼치기" })).toBeTruthy();
+    expect(container.querySelector("#nearby-category-tabs")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "주변 추천 카테고리 펼치기" }));
+    const nearbyTabs = container.querySelector("#nearby-category-tabs") as HTMLElement;
+    expect(nearbyTabs).toBeTruthy();
+    expect(within(nearbyTabs).getByRole("tab", { name: "추천" }).getAttribute("aria-selected")).toBe("true");
+  });
+
   it("keeps map pin selection available across peek, expanded, and hidden sheet states without restoring a floating card", () => {
     const { container } = render(<Home />);
     const marker = () => screen.getAllByRole("button", { name: "성수 식당" })[0];
@@ -755,6 +769,10 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "전체 지도 닫기" })).toBeTruthy();
     const fullscreenSearch = container.querySelector(".route-map-screen.is-map-fullscreen .route-map-search") as HTMLButtonElement;
     expect(fullscreenSearch).toBeTruthy();
+    const fullscreenCategories = container.querySelector(".route-map-screen.is-map-fullscreen #map-category-filter") as HTMLElement;
+    expect(fullscreenCategories).toBeTruthy();
+    await user.click(within(fullscreenCategories).getByRole("button", { name: "맛집" }));
+    expect(within(fullscreenCategories).getByRole("button", { name: "맛집" }).className).toContain("active");
     await user.click(fullscreenSearch);
     expect(screen.getByRole("textbox")).toBeTruthy();
   });
