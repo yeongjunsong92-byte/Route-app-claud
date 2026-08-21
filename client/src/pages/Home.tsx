@@ -76,6 +76,7 @@ type NavigationOrigin = { id: string; label: string; address: string; lat: numbe
 type RegionSelection = { label: string; lat: number; lng: number };
 type RecentRegion = RegionSelection & { isFavorite?: boolean };
 type RecentNavigationDestination = Place & { lastStartedAt?: number; isFavorite?: boolean };
+type MapReturnState = { center: { lat: number; lng: number }; zoom: number; filter: string; isFullscreen: boolean; sheetMode: "expanded" | "peek" | "hidden"; isCategoryBarOpen: boolean };
 
 const mockPlaces: Place[] = [
   { id: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=85", photos: ["https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=85", "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=85", "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=85"], description: "장소 정보는 지도 데이터에 따라 달라질 수 있습니다.", lat: 37.5446, lng: 127.0557, hours: "Google Maps에서 확인", phone: "" },
@@ -565,6 +566,8 @@ export default function Home() {
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const [isMapCategoryBarOpen, setIsMapCategoryBarOpen] = useState(true);
   const [isNearbyCategoryPickerOpen, setIsNearbyCategoryPickerOpen] = useState(true);
+  const [selectedMapPinId, setSelectedMapPinId] = useState<string | null>(null);
+  const [mapReturnState, setMapReturnState] = useState<MapReturnState | null>(null);
   const [clusterPreviewPlaces, setClusterPreviewPlaces] = useState<Place[] | null>(null);
   const [mapTutorialStep, setMapTutorialStep] = useState(0);
   const [isMapTutorialOpen, setIsMapTutorialOpen] = useState(() => {
@@ -642,12 +645,18 @@ export default function Home() {
   const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
   const tutorialSpotlightMarkerRef = useRef<google.maps.Marker | null>(null);
   const mapClusterZoomListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const pendingMapRestoreRef = useRef<MapReturnState | null>(null);
+  const pinSelectionTimerRef = useRef<number | null>(null);
   const initialLocationRequestRef = useRef(false);
   const sheetDragStartRef = useRef<number | null>(null);
   const galleryDragStartRef = useRef<number | null>(null);
   const courseDragStartRef = useRef<number | null>(null);
   const draggedCourseIndexRef = useRef<number | null>(null);
   const selectedCourseId = Number(selectedCourse.id);
+
+  useEffect(() => () => {
+    if (pinSelectionTimerRef.current !== null) window.clearTimeout(pinSelectionTimerRef.current);
+  }, []);
   const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
   const socialDiscoveryInput = useMemo(() => ({ query: socialSearchQuery.trim() || undefined }), [socialSearchQuery]);
   const socialDiscoveryQuery = trpc.people.discover.useQuery(socialDiscoveryInput, { enabled: isAuthenticated && ["friends", "user-search"].includes(screen) });
@@ -787,6 +796,47 @@ export default function Home() {
     });
   };
   const openPlace = (place: Place) => { setGalleryIndex(0); setSelectedPlace(place); setScreen("place-detail"); hydrateGooglePlaceDetails(place); };
+  const captureMapReturnState = () => {
+    const map = mainMapRef.current;
+    const center = typeof map?.getCenter === "function" ? map.getCenter() : null;
+    const snapshot: MapReturnState = {
+      center: center ? { lat: center.lat(), lng: center.lng() } : activeMapCenter,
+      zoom: map?.getZoom() || 15,
+      filter,
+      isFullscreen: isMapFullscreen,
+      sheetMode,
+      isCategoryBarOpen: isMapCategoryBarOpen,
+    };
+    setMapReturnState(snapshot);
+    return snapshot;
+  };
+  const openPlaceFromMap = (place: Place, marker?: google.maps.Marker) => {
+    captureMapReturnState();
+    setSelectedMapPinId(place.id);
+    if (marker && window.google?.maps?.Animation) {
+      marker.setAnimation(window.google.maps.Animation.BOUNCE);
+      window.setTimeout(() => marker.setAnimation(null), 360);
+    }
+    const openDetail = () => openPlace(place);
+    const reducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) openDetail();
+    else {
+      if (pinSelectionTimerRef.current !== null) window.clearTimeout(pinSelectionTimerRef.current);
+      pinSelectionTimerRef.current = window.setTimeout(openDetail, 180);
+    }
+  };
+  const restoreMapFromPlaceDetail = () => {
+    const snapshot = mapReturnState;
+    setScreen("map");
+    if (!snapshot) return;
+    pendingMapRestoreRef.current = snapshot;
+    setFilter(snapshot.filter);
+    setIsMapFullscreen(snapshot.isFullscreen);
+    setSheetMode(snapshot.sheetMode);
+    setIsMapCategoryBarOpen(snapshot.isCategoryBarOpen);
+    setSelectedMapPinId(null);
+    setMapReturnState(null);
+  };
   const focusMapPlace = useCallback((place: Place) => {
     const map = mainMapRef.current;
     if (map) {
@@ -824,6 +874,7 @@ export default function Home() {
       const place = group.points[0];
       const pinColor = categoryPinColor(place.category);
       const pinSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg"><path d="M17 1C8.72 1 2 7.47 2 15.45c0 10.54 15 24.55 15 24.55s15-14.01 15-24.55C32 7.47 25.28 1 17 1Z" fill="${pinColor}" stroke="white" stroke-width="2"/><circle cx="17" cy="15.5" r="5" fill="white" fill-opacity=".96"/></svg>`)}`;
+      const selectedPinSvg = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg width="40" height="48" viewBox="0 0 40 48" xmlns="http://www.w3.org/2000/svg"><path d="M20 2C10.3 2 2.5 9.58 2.5 18.92 2.5 31.24 20 46 20 46s17.5-14.76 17.5-27.08C37.5 9.58 29.7 2 20 2Z" fill="#6351DD" stroke="#F6F3FF" stroke-width="3"/><circle cx="20" cy="19" r="6" fill="#FFFFFF"/></svg>`)}`;
       const marker = new google.maps.Marker({
         map,
         position: { lat: place.lat, lng: place.lng },
@@ -832,13 +883,22 @@ export default function Home() {
         zIndex: 10 + index,
       });
       marker.addListener("click", () => {
-        openPlace(place);
+        marker.setIcon({ url: selectedPinSvg, scaledSize: new google.maps.Size(40, 48), anchor: new google.maps.Point(20, 47) });
+        marker.setZIndex(200);
+        window.setTimeout(() => marker.setIcon({ url: pinSvg, scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) }), 380);
+        openPlaceFromMap(place, marker);
       });
       return marker;
     });
   }, [clearMapMarkers, isMapFullscreen]);
   const handleMainMapReady = useCallback((map: google.maps.Map) => {
     mainMapRef.current = map;
+    const pendingRestore = pendingMapRestoreRef.current;
+    if (pendingRestore) {
+      map.panTo(pendingRestore.center);
+      map.setZoom(pendingRestore.zoom);
+      pendingMapRestoreRef.current = null;
+    }
     syncMapMarkers(map, visibleMapPlaces);
     setMapReadyTick((tick) => tick + 1);
     if (!initialLocationRequestRef.current && !isMapTutorialOpen) {
@@ -1807,7 +1867,7 @@ export default function Home() {
   const renderCourseTravelSummary = () => coursePlaces.length > 1 ? <><>{renderTravelModeSelector()}</><section className="route-course-travel-summary" aria-live="polite" aria-label="순서 변경에 따른 예상 이동시간"><div className="route-course-travel-heading"><div><Navigation size={17} /><span><small>{travelModeMeta[travelMode].summary} · 현재 순서 예상 이동</small><strong>{formatMinutes(courseTravelMinutes)} · {formatDistance(courseTravelDistanceMeters)}</strong></span></div><small>장소 순서를 바꾸면 즉시 갱신됩니다.</small></div>{courseRouteSegments.map((segment, index) => <div className="route-course-travel-leg" key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</section></> : null;
   const renderRouteRecommendation = () => coursePlaces.length > 2 ? <section className="route-optimization-card" aria-label="효율 경로 추천"><div className="route-optimization-heading"><span className="route-optimization-icon"><WandSparkles size={17} /></span><div><span>ROUTE RECOMMENDATION</span><h3>이동이 적은 순서를 추천해요</h3></div></div><section className="route-optimization-comparison" aria-label="추천 동선 전후 비교"><div><small>현재 순서</small><strong>{formatMinutes(courseTravelMinutes)}</strong><span>{formatDistance(courseTravelDistanceMeters)}</span></div><Navigation size={15} /><div className="recommended"><small>추천 순서</small><strong>{formatMinutes(recommendedTravelMinutes)}</strong><span>{formatDistance(recommendedTravelDistanceMeters)}</span></div></section>{routeRecommendationChanged ? <><p>현재 순서보다 <strong>{formatDistance(routeDistanceSaved)}</strong>, 약 <strong>{routeMinutesSaved}분</strong> 이동을 줄일 수 있어요.</p><div className="route-optimization-order">{recommendedCoursePlaces.map((place, index) => <span key={place.id}><b>{index + 1}</b>{place.name}</span>)}</div><div className="route-optimization-actions"><button onClick={applyRouteRecommendation}><WandSparkles size={15} /> 추천 순서 적용</button><button className="share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={15} /> 공유</button></div></> : <><p className="is-current"><Navigation size={15} /> 현재 순서가 추천 동선과 같습니다.</p><button className="route-optimization-current-share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={14} /> 현재 동선 공유</button></>}</section> : null;
   const renderCourseMapPlanner = () => coursePlaces.length > 1 ? <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section> : null;
-  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={activeMapCenter} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} onMapClick={enablePlacePreview && screen === "map" ? () => { setSheetMode("hidden"); setIsMapFullscreen(true); } : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => openPlace(place) : undefined} />}/>{enablePlacePreview && <div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => moveToCurrentLocation()}><LocateFixed size={18} /></button><button aria-label="지역 선택" onClick={() => setIsRegionPickerOpen(true)}><MapPin size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button>{isMapFullscreen && <button aria-label="전체 지도 닫기" onClick={() => { setIsMapFullscreen(false); setSheetMode("peek"); }}><X size={18} /></button>}</div>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
+  const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={activeMapCenter} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} onMapClick={enablePlacePreview && screen === "map" ? () => { setSheetMode("hidden"); setIsMapFullscreen(true); } : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? selectedMapPinId || mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => openPlaceFromMap(place) : undefined} />}/>{enablePlacePreview && <div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => moveToCurrentLocation()}><LocateFixed size={18} /></button><button aria-label="지역 선택" onClick={() => setIsRegionPickerOpen(true)}><MapPin size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button>{isMapFullscreen && <button aria-label="전체 지도 닫기" onClick={() => { setIsMapFullscreen(false); setSheetMode("peek"); }}><X size={18} /></button>}</div>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
 
   const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요. 권한을 허용하지 않아도 지역을 직접 선택할 수 있습니다.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => { setIsLocationPermissionHelpOpen(false); setIsRegionPickerOpen(true); }}><MapPin size={14} /> 지역 선택</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;
   const renderRegionPicker = () => {
@@ -1855,7 +1915,7 @@ export default function Home() {
     if (!selectedPlace) return null;
     const openingLabel = getPlaceOpeningLabel(selectedPlace);
     const photos = getPlacePhotos(selectedPlace).slice(0, 3);
-    return <div className="route-screen route-detail-screen"><section className="route-detail-location-section" aria-label="장소 위치 지도"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" aria-label="지도 화면으로 돌아가기" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share" aria-label="장소 공유"><Share2 size={16} /></button></div><div className="route-detail-location-summary"><span><MapPin size={15} /> 지도 위치</span><strong>{selectedPlace.address}</strong></div></section><div className="route-place-detail-card"><section className="route-detail-photo-section" aria-label="장소 사진"><div className="route-detail-section-heading"><h3>사진</h3><span>{getPlacePhotos(selectedPlace).length}장</span></div><div className="route-detail-images">{photos.map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div></section><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>{typeof selectedPlace.rating === "number" && selectedPlace.rating > 0 && typeof selectedPlace.reviewCount === "number" && selectedPlace.reviewCount > 0 ? `★ ${selectedPlace.rating} (${selectedPlace.reviewCount}) · ` : ""}{selectedPlace.category}</p></div><button aria-label={`${selectedPlace.name} 저장`} onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><section className="route-detail-intro"><h3>장소 소개</h3><p className="route-detail-description">{selectedPlace.description}</p></section>{(openingLabel || selectedPlace.phone) && <section className="route-detail-basic-info" aria-label="기본 정보"><h3>기본 정보</h3>{openingLabel && <p><span><Clock3 size={14} /> 영업시간</span><strong>{openingLabel}</strong></p>}{selectedPlace.phone && <p><span><Users size={14} /> 전화번호</span><strong>{selectedPlace.phone}</strong></p>}</section>}<div className="route-detail-external-links"><a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "네이버 예약 또는 장소 페이지로 이동합니다." : "네이버 검색에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소 보기 <ChevronRight size={13} /></a></div></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
+    return <div className="route-screen route-detail-screen"><section className="route-detail-location-section" aria-label="장소 위치 지도"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" aria-label="지도 화면으로 돌아가기" onClick={restoreMapFromPlaceDetail}><ArrowLeft size={18} /></button><button className="route-floating-share" aria-label="장소 공유"><Share2 size={16} /></button></div><div className="route-detail-location-summary"><span><MapPin size={15} /> 지도 위치</span><strong>{selectedPlace.address}</strong></div></section><div className="route-place-detail-card"><section className="route-detail-photo-section" aria-label="장소 사진"><div className="route-detail-section-heading"><h3>사진</h3><span>{getPlacePhotos(selectedPlace).length}장</span></div><div className="route-detail-images">{photos.map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div></section><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>{typeof selectedPlace.rating === "number" && selectedPlace.rating > 0 && typeof selectedPlace.reviewCount === "number" && selectedPlace.reviewCount > 0 ? `★ ${selectedPlace.rating} (${selectedPlace.reviewCount}) · ` : ""}{selectedPlace.category}</p></div><button aria-label={`${selectedPlace.name} 저장`} onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><section className="route-detail-intro"><h3>장소 소개</h3><p className="route-detail-description">{selectedPlace.description}</p></section>{(openingLabel || selectedPlace.phone) && <section className="route-detail-basic-info" aria-label="기본 정보"><h3>기본 정보</h3>{openingLabel && <p><span><Clock3 size={14} /> 영업시간</span><strong>{openingLabel}</strong></p>}{selectedPlace.phone && <p><span><Users size={14} /> 전화번호</span><strong>{selectedPlace.phone}</strong></p>}</section>}<div className="route-detail-external-links"><a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "네이버 예약 또는 장소 페이지로 이동합니다." : "네이버 검색에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소 보기 <ChevronRight size={13} /></a></div></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
   };
 
   const renderPlaceDetailWithNavigation = () => <>{renderPlaceDetail()}{selectedPlace && <button className="route-place-navigation-fab route-place-naver-fab" aria-label={`${selectedPlace.name} 네이버 내비`} onClick={() => openNaverNavigationConfirmation(selectedPlace)}><span>N</span><Navigation size={16} />네이버 내비</button>}</>;

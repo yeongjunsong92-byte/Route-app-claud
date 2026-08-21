@@ -22,7 +22,13 @@ describe("Route map interactions", () => {
     expect(homeSource).not.toContain("route-sheet-place-glance");
     expect(homeSource).not.toContain("getPlaceOpeningLabel(mapPreviewPlace)");
     expect(homeSource).not.toContain("route-map-place-preview");
-    expect(homeSource).toContain("marker.addListener(\"click\", () => {\n        openPlace(place);");
+    expect(homeSource).toContain("openPlaceFromMap(place, marker)");
+    expect(homeSource).toContain("type MapReturnState");
+    expect(homeSource).toContain("captureMapReturnState");
+    expect(homeSource).toContain("restoreMapFromPlaceDetail");
+    expect(homeSource).toContain("setSelectedMapPinId(place.id)");
+    expect(homeSource).toContain("selectedPinSvg");
+    expect(homeSource).toContain("marker.setZIndex(200)");
     expect(homeSource).toContain("isMapCategoryBarOpen");
     expect(homeSource).toContain('aria-label={isMapCategoryBarOpen ? "지도 카테고리 접기" : "지도 카테고리 펼치기"}');
     expect(homeSource).toContain("isNearbyCategoryPickerOpen");

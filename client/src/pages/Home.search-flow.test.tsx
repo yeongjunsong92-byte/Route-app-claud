@@ -111,8 +111,9 @@ describe("home place search flow", () => {
     const { container } = render(<Home />);
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    expect(container.querySelector(".route-map-marker.is-selected")).toBeTruthy();
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "성수 식당" })).toBeTruthy();
   });
 
   it("opens navigation directly from a place result without visiting the detail screen", async () => {
@@ -130,7 +131,7 @@ describe("home place search flow", () => {
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "성수 식당" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
     expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
   });
@@ -181,13 +182,29 @@ describe("home place search flow", () => {
     expect(within(nearbyTabs).getByRole("tab", { name: "추천" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("opens the detail page from a map pin without restoring the removed floating card", () => {
+  it("opens the detail page from a map pin without restoring the removed floating card", async () => {
     const { container } = render(<Home />);
     const marker = () => screen.getAllByRole("button", { name: "성수 식당" })[0];
 
     fireEvent.click(marker());
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "성수 식당" })).toBeTruthy();
+  });
+
+  it("restores the full-map category state after returning from a pin detail", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "지도 빈 영역" }));
+    const categoryFilter = container.querySelector(".route-map-screen.is-map-fullscreen #map-category-filter") as HTMLElement;
+    await user.click(within(categoryFilter).getByRole("button", { name: "맛집" }));
+    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    await screen.findByRole("heading", { name: "성수 식당" });
+
+    await user.click(screen.getByRole("button", { name: "지도 화면으로 돌아가기" }));
+    const restoredCategoryFilter = container.querySelector(".route-map-screen.is-map-fullscreen #map-category-filter") as HTMLElement;
+    expect(restoredCategoryFilter).toBeTruthy();
+    expect(within(restoredCategoryFilter).getByRole("button", { name: "맛집" }).className).toContain("active");
   });
 
   it("shows the redesigned travel management page and opens saved places", async () => {
@@ -258,19 +275,19 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("button", { name: "현재 코스에 담기" })).toBeNull();
   });
 
-  it("opens the detail page instead of expanding the map sheet after a pin is selected", () => {
+  it("opens the detail page instead of expanding the map sheet after a pin is selected", async () => {
     const { container } = render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
 
-    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "성수 식당" })).toBeTruthy();
     expect(container.querySelector(".route-map-sheet")).toBeNull();
   });
 
-  it("separates the place-detail map, photos, and Korean information sections", () => {
+  it("separates the place-detail map, photos, and Korean information sections", async () => {
     render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
 
-    expect(screen.getByRole("region", { name: "장소 위치 지도" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "장소 위치 지도" })).toBeTruthy();
     expect(screen.getByText("지도 위치")).toBeTruthy();
     expect(screen.getByRole("region", { name: "장소 사진" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "사진" })).toBeTruthy();
