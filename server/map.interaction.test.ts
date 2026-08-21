@@ -18,9 +18,12 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("removeRecentSearch");
     expect(homeSource).toContain("clearRecentSearches");
     expect(homeSource).toContain("addSavedPlaceToCurrentCourse");
-    expect(homeSource).toContain("route-map-current-course-add");
+    expect(homeSource).not.toContain("route-map-current-course-add");
     expect(homeSource).not.toContain("route-sheet-place-glance");
     expect(homeSource).not.toContain("getPlaceOpeningLabel(mapPreviewPlace)");
+    expect(homeSource).not.toContain("route-map-place-preview");
+    expect(homeSource).toContain("isMapCategoryBarOpen");
+    expect(homeSource).toContain('aria-label={isMapCategoryBarOpen ? "지도 카테고리 접기" : "지도 카테고리 펼치기"}');
     expect(homeSource).toContain('setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');

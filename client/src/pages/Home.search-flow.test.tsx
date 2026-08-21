@@ -76,6 +76,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function getPlaceMainButton(name: string) {
+  const placeRow = screen.getByRole("group", { name: `${name} 장소 작업` });
+  const button = placeRow.querySelector<HTMLButtonElement>(".route-place-main");
+  if (!button) throw new Error(`${name} 장소 행의 상세 버튼을 찾을 수 없습니다.`);
+  return button;
+}
+
 describe("home place search flow", () => {
   it("opens the map search screen when the home search bar is clicked", async () => {
     const user = userEvent.setup();
@@ -99,15 +106,16 @@ describe("home place search flow", () => {
     expect(screen.getByText("이벤트 목적지")).toBeTruthy();
   });
 
-  it("shows the selected-place preview from a map marker and opens the course picker", async () => {
+  it("keeps the map clear after a pin selection and opens the course picker from the place detail", async () => {
     const user = userEvent.setup();
-    render(<Home />);
+    const { container } = render(<Home />);
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    expect(screen.getByRole("button", { name: "코스 선택" })).toBeTruthy();
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(getPlaceMainButton("성수 식당"));
     expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
     await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
     expect(screen.getByRole("heading", { name: "코스 만들기" })).toBeTruthy();
   });
@@ -121,14 +129,13 @@ describe("home place search flow", () => {
     expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
   });
 
-  it("opens navigation directly from the selected map preview", async () => {
+  it("keeps navigation available from the map list after a pin selection", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    const navigationButton = container.querySelector<HTMLButtonElement>(".route-map-place-preview-actions button[aria-label='성수 식당 길찾기']");
-    expect(navigationButton).toBeTruthy();
-    await user.click(navigationButton as HTMLButtonElement);
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
+    await user.click(within(screen.getByRole("group", { name: "성수 식당 장소 작업" })).getByRole("button", { name: "성수 식당 길찾기" }));
 
     expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
     expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
@@ -152,25 +159,42 @@ describe("home place search flow", () => {
     expect(container.querySelector(".route-map-sheet")).toBeNull();
   });
 
-  it("keeps map pin selection available across peek, expanded, and hidden sheet states", () => {
+  it("collapses and expands the top map category controls without changing the selected category", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "지도 카테고리 접기" }));
+    expect(screen.getByRole("button", { name: "지도 카테고리 펼치기" })).toBeTruthy();
+    expect(container.querySelector("#map-category-filter")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "지도 카테고리 펼치기" }));
+    const categoryFilter = container.querySelector("#map-category-filter") as HTMLElement;
+    expect(categoryFilter).toBeTruthy();
+    expect(within(categoryFilter).getByRole("button", { name: "전체" }).className).toContain("active");
+  });
+
+  it("keeps map pin selection available across peek, expanded, and hidden sheet states without restoring a floating card", () => {
     const { container } = render(<Home />);
     const marker = () => screen.getAllByRole("button", { name: "성수 식당" })[0];
     const dragZone = () => container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
 
     fireEvent.click(marker());
-    expect(screen.getByRole("button", { name: "코스 선택" })).toBeTruthy();
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
 
     fireEvent.pointerDown(dragZone(), { pointerId: 1, clientY: 420 });
     fireEvent.pointerUp(dragZone(), { pointerId: 1, clientY: 350 });
     expect(container.querySelector(".route-map-sheet")?.className).toContain("is-expanded");
     fireEvent.click(marker());
-    expect(screen.getByRole("button", { name: "코스 선택" })).toBeTruthy();
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
 
     fireEvent.pointerDown(dragZone(), { pointerId: 2, clientY: 420 });
     fireEvent.pointerUp(dragZone(), { pointerId: 2, clientY: 500 });
     expect(container.querySelector(".route-map-sheet")).toBeNull();
     fireEvent.click(marker());
-    expect(screen.getByRole("button", { name: "코스 선택" })).toBeTruthy();
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
+    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
   });
 
   it("shows the redesigned travel management page and opens saved places", async () => {
@@ -232,13 +256,13 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("heading", { name: "최근 검색어" })).toBeNull();
   });
 
-  it("adds a selected saved place to the current course without leaving the map", async () => {
+  it("does not reveal saved-place quick actions above the map sheet", async () => {
     const user = userEvent.setup();
-    render(<Home />);
+    const { container } = render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "테스트 저장 장소" }));
-    await user.click(screen.getByRole("button", { name: "현재 코스에 담기" }));
-    expect(screen.getByRole("button", { name: "현재 코스에 담김" })).toBeTruthy();
+    expect(container.querySelector(".route-map-place-preview")).toBeNull();
+    expect(screen.queryByRole("button", { name: "현재 코스에 담기" })).toBeNull();
   });
 
   it("keeps the expanded map sheet focused on nearby place rows after a pin is selected", () => {
@@ -257,7 +281,7 @@ describe("home place search flow", () => {
   it("separates the place-detail map, photos, and Korean information sections", () => {
     render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: /성수 식당 대표 사진/ }));
+    fireEvent.click(getPlaceMainButton("성수 식당"));
 
     expect(screen.getByRole("region", { name: "장소 위치 지도" })).toBeTruthy();
     expect(screen.getByText("지도 위치")).toBeTruthy();
@@ -344,10 +368,9 @@ describe("home place search flow", () => {
 
   it("opens the place photo gallery and exposes the Naver reservation and inquiry link", async () => {
     const user = userEvent.setup();
-    const { container } = render(<Home />);
+    render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
+    await user.click(getPlaceMainButton("성수 식당"));
     expect(screen.getByRole("link", { name: /네이버에서 예약 찾기/ }).getAttribute("href")).toContain("https://search.naver.com/search.naver");
     expect(screen.getByRole("link", { name: /네이버 지도에서 장소 보기/ }).getAttribute("href")).toContain("https://map.naver.com/p/search/");
 
@@ -364,10 +387,9 @@ describe("home place search flow", () => {
 
   it("opens a distance-only overview and prioritizes Naver navigation with a website fallback", async () => {
     const user = userEvent.setup();
-    const { container } = render(<Home />);
+    render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
+    await user.click(getPlaceMainButton("성수 식당"));
     await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
 
     expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
@@ -398,10 +420,9 @@ describe("home place search flow", () => {
 
   it("opens the fixed place-detail Naver button into a destination confirmation sheet with travel-mode estimates", async () => {
     const user = userEvent.setup();
-    const { container } = render(<Home />);
+    render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
+    await user.click(getPlaceMainButton("성수 식당"));
     await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
 
     expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
@@ -503,8 +524,8 @@ describe("home place search flow", () => {
     const user = userEvent.setup();
     render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(getPlaceMainButton("성수 식당"));
+    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
     await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
 
     fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
@@ -522,8 +543,8 @@ describe("home place search flow", () => {
     const user = userEvent.setup();
     render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(getPlaceMainButton("성수 식당"));
+    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
     await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
     fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
     fireEvent.change(screen.getByLabelText("종료일"), { target: { value: "2026-09-03" } });
@@ -683,8 +704,8 @@ describe("home place search flow", () => {
     const user = userEvent.setup();
     render(<Home />);
 
-    await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    await user.click(screen.getByRole("button", { name: "코스 선택" }));
+    await user.click(getPlaceMainButton("성수 식당"));
+    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
     await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
 
     fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-09-01" } });
