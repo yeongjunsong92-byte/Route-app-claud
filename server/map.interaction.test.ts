@@ -73,5 +73,10 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('aria-label="주변 장소 추천 카테고리"');
     expect(homeSource).toContain("loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch)");
     expect(homeSource).toContain('현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페"');
+    expect(homeSource).toContain('aria-pressed={openNowOnly}');
+    expect(homeSource).toContain("현재 영업 중");
+    expect(homeSource).toContain('fields: ["opening_hours", "rating", "user_ratings_total"]');
+    expect(homeSource).toContain("weekday_text");
+    expect(homeSource).toContain("리뷰 ${place.reviewCount}");
   });
 });

@@ -288,6 +288,7 @@ describe("home place search flow", () => {
         { place_id: "near-far", name: "조금 먼 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.570, lng: () => 127.080 } } },
         { place_id: "near-close", name: "가까운 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.566, lng: () => 127.078 } } },
       ], "OK"));
+      getDetails = vi.fn((_request: unknown, callback: (result: unknown, status: string) => void) => callback({ opening_hours: { isOpen: () => true, weekday_text: ["월요일: 09:00–20:00", "화요일: 09:00–20:00", "수요일: 09:00–20:00", "목요일: 09:00–20:00", "금요일: 09:00–20:00", "토요일: 10:00–18:00", "일요일: 휴무"] }, rating: 4.6, user_ratings_total: 235 }, "OK"));
     }
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -302,6 +303,8 @@ describe("home place search flow", () => {
       await waitFor(() => expect(screen.getByText("현재 위치 주변 여행지·음식점·카페 추천")).toBeTruthy());
       const recommendationRows = screen.getAllByRole("group", { name: /장소 작업/ });
       expect(recommendationRows.map((row) => row.getAttribute("aria-label"))).toEqual(["가까운 카페 장소 작업", "조금 먼 카페 장소 작업"]);
+      expect(screen.getAllByText(/리뷰 235/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/09:00–20:00/).length).toBeGreaterThan(0);
       expect(screen.getByRole("tablist", { name: "주변 장소 카테고리" })).toBeTruthy();
       await user.click(screen.getByRole("tab", { name: "여행지" }));
       await waitFor(() => expect(screen.getByText("현재 위치 주변 여행지 추천")).toBeTruthy());
@@ -318,7 +321,8 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: /거리순/ }));
     expect(screen.getByRole("button", { name: /거리순 ON/ })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "영업 중" }));
+    await user.click(screen.getByRole("button", { name: "현재 영업 중" }));
+    expect(screen.getByRole("button", { name: "현재 영업 중" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("현재 영업 중인 장소가 없습니다")).toBeTruthy();
   });
 
