@@ -106,18 +106,13 @@ describe("home place search flow", () => {
     expect(screen.getByText("이벤트 목적지")).toBeTruthy();
   });
 
-  it("keeps the map clear after a pin selection and opens the course picker from the place detail", async () => {
+  it("opens the place detail directly when a map pin is selected", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-
-    await user.click(getPlaceMainButton("성수 식당"));
     expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "코스에 추가" }));
-    await user.click(screen.getByRole("button", { name: /새 코스 만들기/ }));
-    expect(screen.getByRole("heading", { name: "코스 만들기" })).toBeTruthy();
   });
 
   it("opens navigation directly from a place result without visiting the detail screen", async () => {
@@ -129,16 +124,15 @@ describe("home place search flow", () => {
     expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
   });
 
-  it("keeps navigation available from the map list after a pin selection", async () => {
+  it("keeps navigation available from the detail page opened by a map pin", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    await user.click(within(screen.getByRole("group", { name: "성수 식당 장소 작업" })).getByRole("button", { name: "성수 식당 길찾기" }));
-
-    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
+    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
   });
 
   it("expands and fully collapses the nearby-place sheet with vertical drags", () => {
@@ -187,28 +181,13 @@ describe("home place search flow", () => {
     expect(within(nearbyTabs).getByRole("tab", { name: "추천" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("keeps map pin selection available across peek, expanded, and hidden sheet states without restoring a floating card", () => {
+  it("opens the detail page from a map pin without restoring the removed floating card", () => {
     const { container } = render(<Home />);
     const marker = () => screen.getAllByRole("button", { name: "성수 식당" })[0];
-    const dragZone = () => container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
 
     fireEvent.click(marker());
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
-
-    fireEvent.pointerDown(dragZone(), { pointerId: 1, clientY: 420 });
-    fireEvent.pointerUp(dragZone(), { pointerId: 1, clientY: 350 });
-    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-expanded");
-    fireEvent.click(marker());
-    expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
-
-    fireEvent.pointerDown(dragZone(), { pointerId: 2, clientY: 420 });
-    fireEvent.pointerUp(dragZone(), { pointerId: 2, clientY: 500 });
-    expect(container.querySelector(".route-map-sheet")).toBeNull();
-    fireEvent.click(marker());
-    expect(container.querySelector(".route-map-place-preview")).toBeNull();
-    expect(container.querySelector(".route-map-sheet")?.className).toContain("is-peek");
+    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
   });
 
   it("shows the redesigned travel management page and opens saved places", async () => {
@@ -279,23 +258,17 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("button", { name: "현재 코스에 담기" })).toBeNull();
   });
 
-  it("keeps the expanded map sheet focused on nearby place rows after a pin is selected", () => {
+  it("opens the detail page instead of expanding the map sheet after a pin is selected", () => {
     const { container } = render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
 
-    const dragZone = container.querySelector(".route-sheet-drag-zone") as HTMLDivElement;
-    fireEvent.pointerDown(dragZone, { pointerId: 4, clientY: 420 });
-    fireEvent.pointerUp(dragZone, { pointerId: 4, clientY: 350 });
-
-    expect(screen.queryByText("선택한 장소")).toBeNull();
-    expect(screen.queryByRole("button", { name: /사진 3장과 상세 정보 보기/ })).toBeNull();
-    expect(screen.getAllByRole("group", { name: /장소 작업/ }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "성수 식당" })).toBeTruthy();
+    expect(container.querySelector(".route-map-sheet")).toBeNull();
   });
 
   it("separates the place-detail map, photos, and Korean information sections", () => {
     render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
-    fireEvent.click(getPlaceMainButton("성수 식당"));
 
     expect(screen.getByRole("region", { name: "장소 위치 지도" })).toBeTruthy();
     expect(screen.getByText("지도 위치")).toBeTruthy();
