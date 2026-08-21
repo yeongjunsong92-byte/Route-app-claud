@@ -253,6 +253,20 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: /사진 3장과 상세 정보 보기/ })).toBeTruthy();
   });
 
+  it("separates the place-detail map, photos, and Korean information sections", () => {
+    render(<Home />);
+    fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: /성수 식당 대표 사진/ }));
+
+    expect(screen.getByRole("region", { name: "장소 위치 지도" })).toBeTruthy();
+    expect(screen.getByText("지도 위치")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "장소 사진" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "사진" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "장소 소개" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "지도 화면으로 돌아가기" })).toBeTruthy();
+    expect(screen.getByText("네이버 지도에서 장소 보기")).toBeTruthy();
+  });
+
   it("opens location-permission guidance when the browser denies current location", async () => {
     const user = userEvent.setup();
     const originalGeolocation = navigator.geolocation;
@@ -334,7 +348,7 @@ describe("home place search flow", () => {
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     await user.click(container.querySelector(".route-map-place-preview-main") as HTMLButtonElement);
     expect(screen.getByRole("link", { name: /네이버에서 예약 찾기/ }).getAttribute("href")).toContain("https://search.naver.com/search.naver");
-    expect(screen.getByRole("link", { name: /네이버 지도에서 장소만 검색하기/ }).getAttribute("href")).toContain("https://map.naver.com/p/search/");
+    expect(screen.getByRole("link", { name: /네이버 지도에서 장소 보기/ }).getAttribute("href")).toContain("https://map.naver.com/p/search/");
 
     await user.click(screen.getByRole("button", { name: "성수 식당 사진 1 확대" }));
     expect(screen.getByRole("dialog", { name: "성수 식당 사진 갤러리" })).toBeTruthy();
