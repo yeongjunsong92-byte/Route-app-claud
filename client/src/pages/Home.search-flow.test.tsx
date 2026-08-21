@@ -241,7 +241,7 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "현재 코스에 담김" })).toBeTruthy();
   });
 
-  it("reveals operating hours and photos for a selected place in the expanded sheet", () => {
+  it("hides the operating-hours area when the selected place has no actual hours", () => {
     const { container } = render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
 
@@ -249,7 +249,7 @@ describe("home place search flow", () => {
     fireEvent.pointerDown(dragZone, { pointerId: 4, clientY: 420 });
     fireEvent.pointerUp(dragZone, { pointerId: 4, clientY: 350 });
 
-    expect(screen.getByText("영업시간")).toBeTruthy();
+    expect(screen.queryByText("영업시간")).toBeNull();
     expect(screen.getByRole("button", { name: /사진 3장과 상세 정보 보기/ })).toBeTruthy();
   });
 
@@ -288,7 +288,7 @@ describe("home place search flow", () => {
         { place_id: "near-far", name: "조금 먼 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.570, lng: () => 127.080 } } },
         { place_id: "near-close", name: "가까운 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.566, lng: () => 127.078 } } },
       ], "OK"));
-      getDetails = vi.fn((_request: unknown, callback: (result: unknown, status: string) => void) => callback({ opening_hours: { isOpen: () => true, weekday_text: ["월요일: 09:00–20:00", "화요일: 09:00–20:00", "수요일: 09:00–20:00", "목요일: 09:00–20:00", "금요일: 09:00–20:00", "토요일: 10:00–18:00", "일요일: 휴무"] }, rating: 4.6, user_ratings_total: 235 }, "OK"));
+      getDetails = vi.fn((request: { placeId?: string }, callback: (result: unknown, status: string) => void) => callback(request.placeId === "near-close" ? { opening_hours: { isOpen: () => true, weekday_text: ["월요일: 09:00–20:00", "화요일: 09:00–20:00", "수요일: 09:00–20:00", "목요일: 09:00–20:00", "금요일: 09:00–20:00", "토요일: 10:00–18:00", "일요일: 휴무"] }, rating: 4.6, user_ratings_total: 235 } : { opening_hours: { isOpen: () => true }, rating: 4.6, user_ratings_total: 235 }, "OK"));
     }
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -305,6 +305,7 @@ describe("home place search flow", () => {
       expect(recommendationRows.map((row) => row.getAttribute("aria-label"))).toEqual(["가까운 카페 장소 작업", "조금 먼 카페 장소 작업"]);
       expect(screen.getAllByText(/리뷰 235/).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/09:00–20:00/).length).toBeGreaterThan(0);
+      expect(within(screen.getByRole("group", { name: "조금 먼 카페 장소 작업" })).queryByText(/영업 중/)).toBeNull();
       expect(screen.getByRole("tablist", { name: "주변 장소 카테고리" })).toBeTruthy();
       await user.click(screen.getByRole("tab", { name: "여행지" }));
       await waitFor(() => expect(screen.getByText("현재 위치 주변 여행지 추천")).toBeTruthy());

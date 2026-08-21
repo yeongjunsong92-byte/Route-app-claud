@@ -20,7 +20,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("addSavedPlaceToCurrentCourse");
     expect(homeSource).toContain("route-map-current-course-add");
     expect(homeSource).toContain("route-sheet-place-glance");
-    expect(homeSource).toContain("mapPreviewPlace.hours");
+    expect(homeSource).toContain("getPlaceOpeningLabel(mapPreviewPlace)");
     expect(homeSource).toContain('setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');
@@ -43,7 +43,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("naverMapSearchUrl");
     expect(homeSource).toContain("renderScheduleWarnings(selectedCourseScheduleWarnings)");
     expect(homeSource).toContain("courseStatusLabel[courseStatus]");
-    expect(homeSource).toContain('hours: item.hours || "영업시간 확인"');
+    expect(homeSource).toContain('hours: item.hours || ""');
     expect(homeSource).toContain("hours: place.hours");
     expect(homeSource).toContain("hours: coursePickerPlace.hours");
     expect(homeSource).toContain("dayNumber: courseItemDays[place.id] || 1");
@@ -78,6 +78,9 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("현재 영업 중");
     expect(homeSource).toContain('fields: ["opening_hours", "rating", "user_ratings_total"]');
     expect(homeSource).toContain("weekday_text");
+    expect(homeSource).toContain("getGooglePlaceTodayHours");
+    expect(homeSource).toContain("getDisplayHours");
+    expect(homeSource).toContain("getPlaceOpeningLabel");
     expect(homeSource).toContain("리뷰 ${place.reviewCount}");
   });
 });

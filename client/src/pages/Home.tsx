@@ -114,6 +114,25 @@ function getGooglePlaceOpenNow(openingHours: unknown): boolean | undefined {
   }
 }
 
+function getGooglePlaceTodayHours(openingHours: unknown): string | undefined {
+  const weekdayText = (openingHours as { weekday_text?: string[] } | undefined)?.weekday_text;
+  const todayIndex = (new Date().getDay() + 6) % 7;
+  const hours = weekdayText?.[todayIndex]?.trim();
+  return hours || undefined;
+}
+
+function getDisplayHours(hours?: string | null): string | undefined {
+  const normalized = hours?.trim();
+  if (!normalized || ["Google Maps에서 확인", "영업시간 확인", "영업시간은 Google Maps에서 확인", "현재 영업 중", "현재 영업 종료"].includes(normalized)) return undefined;
+  return normalized;
+}
+
+function getPlaceOpeningLabel(place: Pick<Place, "hours" | "openNow">): string | undefined {
+  const hours = getDisplayHours(place.hours);
+  if (!hours) return undefined;
+  return place.openNow === true ? `영업 중 · ${hours}` : place.openNow === false ? `영업 종료 · ${hours}` : hours;
+}
+
 function categoryFromPlaceTypes(types?: string[]) {
   if (types?.some((type) => ["cafe", "bakery", "coffee_shop"].includes(type))) return "카페";
   if (types?.some((type) => ["restaurant", "meal_takeaway", "food"].includes(type))) return "맛집";
@@ -244,8 +263,8 @@ function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => 
 function PlaceRow({ place, onClick, onSave, distanceLabel = "350m" }: { place: Place; onClick: () => void; onSave: () => void; distanceLabel?: string }) {
   const dispatchNavigation = () => window.dispatchEvent(new CustomEvent<Place>("route:navigate-place", { detail: place }));
   const hasGoogleRating = typeof place.rating === "number" && place.rating > 0 && typeof place.reviewCount === "number" && place.reviewCount > 0;
-  const openingLabel = place.openNow === true ? `영업 중 · ${place.hours}` : place.openNow === false ? `영업 종료 · ${place.hours}` : place.hours;
-  return <div className="route-place-row" role="group" aria-label={`${place.name} 장소 작업`}><button className="route-place-main" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>{hasGoogleRating ? `★ ${place.rating} · 리뷰 ${place.reviewCount} · ` : ""}{place.category}</small><em className={place.openNow === false ? "is-closed" : place.openNow === true ? "is-open" : ""}>{openingLabel}</em><i>{place.address}</i></span><span className="route-place-distance">{distanceLabel}</span></button><button className="route-place-navigate" aria-label={`${place.name} 길찾기`} onClick={dispatchNavigation}><Navigation size={15} /></button><button className="route-place-save" aria-label={`${place.name} 저장`} onClick={onSave}><Bookmark size={16} /></button></div>;
+  const openingLabel = getPlaceOpeningLabel(place);
+  return <div className="route-place-row" role="group" aria-label={`${place.name} 장소 작업`}><button className="route-place-main" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>{hasGoogleRating ? `★ ${place.rating} · 리뷰 ${place.reviewCount} · ` : ""}{place.category}</small>{openingLabel && <em className={place.openNow === false ? "is-closed" : place.openNow === true ? "is-open" : ""}>{openingLabel}</em>}<i>{place.address}</i></span><span className="route-place-distance">{distanceLabel}</span></button><button className="route-place-navigate" aria-label={`${place.name} 길찾기`} onClick={dispatchNavigation}><Navigation size={15} /></button><button className="route-place-save" aria-label={`${place.name} 저장`} onClick={onSave}><Bookmark size={16} /></button></div>;
 }
 
 function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
@@ -717,7 +736,7 @@ export default function Home() {
       reviewCount: 0,
       lat: place.lat,
       lng: place.lng,
-      hours: place.hours || "영업시간 확인",
+      hours: place.hours || "",
       phone: "",
     }];
   }), [savedPlacesQuery.data]);
@@ -928,7 +947,7 @@ export default function Home() {
     if (!detail?.items?.length) return [];
     const detailPlaces = detail.items.map((item: any, index: number) => {
       const fallback = mockPlaces.find((place) => place.id === item.placeId || place.name === item.name) || mockPlaces[index % mockPlaces.length];
-      return { ...fallback, id: item.placeId, name: item.name, hours: item.hours || "영업시간 확인" };
+      return { ...fallback, id: item.placeId, name: item.name, hours: item.hours || "" };
     });
     return getScheduleWarnings(detailPlaces, Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.visitTime || "10:00"])));
   }, [selectedCourseQuery.data]);
@@ -1001,7 +1020,7 @@ export default function Home() {
     if (screen !== "edit-course" || !detail?.items?.length) return;
     const normalizedPlaces = detail.items.map((item: any) => {
       const fallback = mockPlaces.find((place) => place.id === item.placeId || place.name === item.name) || mockPlaces[0];
-      return { ...fallback, id: item.placeId, name: item.name, category: item.category || fallback.category, address: item.address || fallback.address, image: item.imageUrl || fallback.image, lat: item.lat || fallback.lat, lng: item.lng || fallback.lng, hours: item.hours || "영업시간 확인" };
+      return { ...fallback, id: item.placeId, name: item.name, category: item.category || fallback.category, address: item.address || fallback.address, image: item.imageUrl || fallback.image, lat: item.lat || fallback.lat, lng: item.lng || fallback.lng, hours: item.hours || "" };
     });
     setCoursePlaces(normalizedPlaces);
     setCourseTitle(detail.title);
@@ -1121,12 +1140,13 @@ export default function Home() {
       if (status !== google.maps.places.PlacesServiceStatus.OK || !details) return;
       const photos = details.photos?.slice(0, 5).map((photo) => photo.getUrl({ maxWidth: 1200, maxHeight: 900 })) || [];
       const openNow = getGooglePlaceOpenNow(details.opening_hours);
+      const todayHours = getGooglePlaceTodayHours(details.opening_hours);
       const enriched: Place = {
         ...place,
         name: details.name || place.name,
         address: details.formatted_address || place.address,
         phone: details.formatted_phone_number || place.phone,
-        hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : place.hours,
+        hours: todayHours || "",
         openNow: openNow ?? place.openNow,
         photos: photos.length ? photos : place.photos,
         image: photos[0] || place.image,
@@ -1582,7 +1602,7 @@ export default function Home() {
           reviewCount: result.user_ratings_total || 0,
           lat,
           lng,
-          hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인",
+          hours: getGooglePlaceTodayHours(result.opening_hours) || "",
           phone: "",
           photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [],
           openNow,
@@ -1639,7 +1659,7 @@ export default function Home() {
         const lng = result.geometry?.location?.lng();
         if (lat === undefined || lng === undefined) return [];
         const openNow = getGooglePlaceOpenNow(result.opening_hours);
-        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || categoryLabel, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${categoryLabel} 추천 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
+        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || categoryLabel, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${categoryLabel} 추천 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: getGooglePlaceTodayHours(result.opening_hours) || "", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
       }).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b)).slice(0, 12);
       setHasLiveSearch(true);
       setLivePlaces(normalized);
@@ -1652,10 +1672,8 @@ export default function Home() {
         service.getDetails({ placeId: place.id, fields: ["opening_hours", "rating", "user_ratings_total"] }, (detail, detailStatus) => {
           if (detailStatus !== google.maps.places.PlacesServiceStatus.OK || !detail) return;
           const openNow = getGooglePlaceOpenNow(detail.opening_hours);
-          const weekdayText = detail.opening_hours?.weekday_text;
-          const todayIndex = (new Date().getDay() + 6) % 7;
-          const openingHours = weekdayText?.[todayIndex] || (openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : place.hours);
-          setLivePlaces((current) => current.map((item) => item.id === place.id ? { ...item, hours: openingHours, openNow, rating: detail.rating || item.rating, reviewCount: detail.user_ratings_total || item.reviewCount } : item));
+          const todayHours = getGooglePlaceTodayHours(detail.opening_hours);
+          setLivePlaces((current) => current.map((item) => item.id === place.id ? { ...item, hours: todayHours || "", openNow, rating: detail.rating || item.rating, reviewCount: detail.user_ratings_total || item.reviewCount } : item));
         });
       });
     };
@@ -1820,13 +1838,13 @@ export default function Home() {
     <button className="route-map-search" onClick={() => setScreen("search")} aria-label="장소 검색"><Search size={17} /><span>{query || "장소를 검색해보세요"}</span><ChevronRight size={15} /></button>
     <div className="route-filter-row">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => searchNearbyCategory(item)}>{item}</button>)}</div>
     {renderMap(false, true)}
-    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch && userLocation ? `현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페" : filter === "맛집" ? "음식점" : filter === "관광지" ? "여행지" : filter} 추천` : hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : userLocation ? "현재 위치 주변 추천" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderNearbyCategoryPicker()}{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div><div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{mapPreviewPlace.hours}</strong></span></div><div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
+    {sheetMode !== "hidden" && <div className={`route-map-sheet is-${sheetMode}`}><div className="route-sheet-drag-zone" onPointerDown={handleSheetPointerDown} onPointerUp={handleSheetPointerUp}><div className="route-sheet-handle" /></div><div className="route-sheet-title"><strong>{hasLiveSearch && userLocation ? `현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페" : filter === "맛집" ? "음식점" : filter === "관광지" ? "여행지" : filter} 추천` : hasLiveSearch ? "검색 결과" : selectedRegion ? `${selectedRegion.label} 주변` : userLocation ? "현재 위치 주변 추천" : "주변 장소"}</strong><span>{visibleMapPlaces.length}곳</span></div>{renderNearbyCategoryPicker()}{renderDiscoveryControls()}{mapPreviewPlace && sheetMode === "expanded" && <section className="route-sheet-place-glance"><div className="route-sheet-place-glance-heading"><span>선택한 장소</span><button onClick={() => openPlace(mapPreviewPlace)}>상세 보기 <ChevronRight size={13} /></button></div>{getPlaceOpeningLabel(mapPreviewPlace) && <div className="route-sheet-hours"><Clock3 size={16} /><span><small>영업시간</small><strong>{getPlaceOpeningLabel(mapPreviewPlace)}</strong></span></div>}<div className="route-sheet-photo-strip">{getPlacePhotos(mapPreviewPlace).slice(0, 3).map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`${mapPreviewPlace.name} 사진 ${index + 1}`} />)}</div><button className="route-sheet-photo-more" onClick={() => openPlace(mapPreviewPlace)}>사진 {getPlacePhotos(mapPreviewPlace).length}장과 상세 정보 보기 <ChevronRight size={14} /></button></section>}{placesLoading ? <div className="route-empty"><Search size={20} /><strong>장소를 찾고 있습니다</strong><span>Google Maps 검색 결과를 불러오는 중입니다.</span></div> : visibleMapPlaces.length ? (sheetMode === "expanded" ? visibleMapPlaces : visibleMapPlaces.slice(0, 3)).map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />) : <div className="route-empty"><Search size={20} /><strong>{selectedRegion ? "카테고리를 선택해 주변 장소를 찾아보세요" : openNowOnly ? "현재 영업 중인 장소가 없습니다" : "검색 결과가 없습니다"}</strong><span>{selectedRegion ? "맛집·카페·관광지·숙소 버튼을 눌러 검색을 시작하세요." : "필터를 해제하거나 다른 키워드로 찾아보세요."}</span></div>}</div>}
     {renderRegionPicker()}
   </div>;
 
   const renderSearchScreen = () => <div className="route-screen route-search-screen"><ScreenHeader title="장소 검색" onBack={() => setScreen("map")} /><div className="route-search-composer"><div className="route-search-input"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlaces(); }} placeholder="성수 맛집" /><button aria-label="검색" onClick={() => searchPlaces()}>{placesLoading ? "…" : <Search size={15} />}</button><button aria-label="입력 지우기" onClick={() => { setQuery(""); setHasLiveSearch(false); setLivePlaces([]); setPlacePredictions([]); }}><X size={15} /></button></div>{placePredictions.length > 0 && <div className="route-autocomplete-list">{placePredictions.map((prediction) => <button key={prediction.place_id} onClick={() => choosePrediction(prediction)}><MapPin size={15} /><span><strong>{prediction.structured_formatting.main_text}</strong><small>{prediction.structured_formatting.secondary_text || prediction.description}</small></span><ChevronRight size={15} /></button>)}</div>}{!query.trim() && !hasLiveSearch && recentSearches.length > 0 && <section className="route-recent-searches"><div className="route-recent-searches-heading"><div><span>RECENT</span><h2>최근 검색어</h2></div><button aria-label="최근 검색어 전체 삭제" onClick={clearRecentSearches}>전체 삭제</button></div>{recentSearches.map((term) => <div className="route-recent-search-row" key={term}><button className="route-recent-search-run" onClick={() => { setQuery(term); searchPlaces(term); }}><Clock3 size={15} /><span>{term}</span><ChevronRight size={15} /></button><button className="route-recent-search-delete" aria-label={`${term} 삭제`} onClick={() => removeRecentSearch(term)}><X size={14} /></button></div>)}</section>}</div><div className="route-filter-row inner">{["전체", "맛집", "카페", "관광지", "숙소"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>{renderDiscoveryControls()}{renderMap(true, true)}<div className="route-search-list">{visibleMapPlaces.map((place) => <PlaceRow key={place.id} place={place} distanceLabel={getPlaceDistanceLabel(place)} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</div></div>;
 
-  const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images">{getPlacePhotos(selectedPlace).slice(0, 3).map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>{typeof selectedPlace.rating === "number" && selectedPlace.rating > 0 && typeof selectedPlace.reviewCount === "number" && selectedPlace.reviewCount > 0 ? `★ ${selectedPlace.rating} (${selectedPlace.reviewCount}) · ` : ""}{selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p><p><Clock3 size={14} /> {selectedPlace.hours}</p>{selectedPlace.phone && <p><Users size={14} /> {selectedPlace.phone}</p>}<a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "실제 네이버 예약·플레이스 페이지로 이동합니다." : "네이버 검색 결과에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소만 검색하기 <ChevronRight size={13} /></a></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스 선택</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
+  const renderPlaceDetail = () => selectedPlace && <div className="route-screen route-detail-screen"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" onClick={() => setScreen("map")}><ArrowLeft size={18} /></button><button className="route-floating-share"><Share2 size={16} /></button></div><div className="route-place-detail-card"><div className="route-detail-images">{getPlacePhotos(selectedPlace).slice(0, 3).map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>{typeof selectedPlace.rating === "number" && selectedPlace.rating > 0 && typeof selectedPlace.reviewCount === "number" && selectedPlace.reviewCount > 0 ? `★ ${selectedPlace.rating} (${selectedPlace.reviewCount}) · ` : ""}{selectedPlace.category}</p></div><button onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><p className="route-detail-description">{selectedPlace.description}</p><p><MapPin size={14} /> {selectedPlace.address}</p>{getPlaceOpeningLabel(selectedPlace) && <p><Clock3 size={14} /> {getPlaceOpeningLabel(selectedPlace)}</p>}{selectedPlace.phone && <p><Users size={14} /> {selectedPlace.phone}</p>}<a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "실제 네이버 예약·플레이스 페이지로 이동합니다." : "네이버 검색 결과에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소만 검색하기 <ChevronRight size={13} /></a></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스 선택</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
 
   const renderPlaceDetailWithNavigation = () => <>{renderPlaceDetail()}{selectedPlace && <button className="route-place-navigation-fab route-place-naver-fab" aria-label={`${selectedPlace.name} 네이버 내비`} onClick={() => openNaverNavigationConfirmation(selectedPlace)}><span>N</span><Navigation size={16} />네이버 내비</button>}</>;
   const renderNaverNavigation = () => {
