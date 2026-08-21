@@ -19,8 +19,8 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("clearRecentSearches");
     expect(homeSource).toContain("addSavedPlaceToCurrentCourse");
     expect(homeSource).toContain("route-map-current-course-add");
-    expect(homeSource).toContain("route-sheet-place-glance");
-    expect(homeSource).toContain("getPlaceOpeningLabel(mapPreviewPlace)");
+    expect(homeSource).not.toContain("route-sheet-place-glance");
+    expect(homeSource).not.toContain("getPlaceOpeningLabel(mapPreviewPlace)");
     expect(homeSource).toContain('setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');

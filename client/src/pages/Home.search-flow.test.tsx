@@ -241,7 +241,7 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "현재 코스에 담김" })).toBeTruthy();
   });
 
-  it("hides the operating-hours area when the selected place has no actual hours", () => {
+  it("keeps the expanded map sheet focused on nearby place rows after a pin is selected", () => {
     const { container } = render(<Home />);
     fireEvent.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
 
@@ -249,8 +249,9 @@ describe("home place search flow", () => {
     fireEvent.pointerDown(dragZone, { pointerId: 4, clientY: 420 });
     fireEvent.pointerUp(dragZone, { pointerId: 4, clientY: 350 });
 
-    expect(screen.queryByText("영업시간")).toBeNull();
-    expect(screen.getByRole("button", { name: /사진 3장과 상세 정보 보기/ })).toBeTruthy();
+    expect(screen.queryByText("선택한 장소")).toBeNull();
+    expect(screen.queryByRole("button", { name: /사진 3장과 상세 정보 보기/ })).toBeNull();
+    expect(screen.getAllByRole("group", { name: /장소 작업/ }).length).toBeGreaterThan(0);
   });
 
   it("separates the place-detail map, photos, and Korean information sections", () => {
