@@ -773,6 +773,8 @@ describe("home place search flow", () => {
     expect(fullscreenCategories).toBeTruthy();
     await user.click(within(fullscreenCategories).getByRole("button", { name: "맛집" }));
     expect(within(fullscreenCategories).getByRole("button", { name: "맛집" }).className).toContain("active");
+    expect(container.querySelector(".route-map-screen.is-map-fullscreen")).toBeTruthy();
+    expect(container.querySelector(".route-map-sheet")).toBeNull();
     await user.click(fullscreenSearch);
     expect(screen.getByRole("textbox")).toBeTruthy();
   });

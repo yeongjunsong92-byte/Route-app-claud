@@ -1632,7 +1632,7 @@ export default function Home() {
     setPlacePredictions([]);
     searchPlaces(prediction.description);
   };
-  function loadNearbyPlaces(origin: { lat: number; lng: number }, category: string, isCurrentLocationSearch: boolean) {
+  function loadNearbyPlaces(origin: { lat: number; lng: number }, category: string, isCurrentLocationSearch: boolean, keepFullscreen = false) {
     const map = mainMapRef.current;
     if (!map || !window.google?.maps?.places) {
       toast.error("지도를 불러오는 중입니다. 잠시 후 다시 선택해 주세요.");
@@ -1651,7 +1651,7 @@ export default function Home() {
       if (!collected.length) {
         setHasLiveSearch(true);
         setLivePlaces([]);
-        setSheetMode("expanded");
+        if (!keepFullscreen) setSheetMode("expanded");
         toast.message(`${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변에 ${categoryLabel} 결과가 없습니다.`);
         return;
       }
@@ -1666,7 +1666,7 @@ export default function Home() {
       setHasLiveSearch(true);
       setLivePlaces(normalized);
       setMapPreviewPlace(normalized[0] || null);
-      setSheetMode("expanded");
+      if (!keepFullscreen) setSheetMode("expanded");
       map.panTo(origin);
       map.setZoom(14);
       normalized.forEach((place) => {
@@ -1772,10 +1772,11 @@ export default function Home() {
     setFilter(category);
     const nearbyOrigin = userLocation || selectedRegion;
     const isCurrentLocationSearch = Boolean(userLocation);
-    if (nearbyOrigin) loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch);
+    const keepFullscreen = isMapFullscreen && screen === "map";
+    if (nearbyOrigin) loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch, keepFullscreen);
     else {
       toast.message("현재 위치를 확인하거나 원하는 지역을 선택해 주세요.");
-      moveToCurrentLocation((location) => loadNearbyPlaces(location, category, true));
+      moveToCurrentLocation((location) => loadNearbyPlaces(location, category, true, keepFullscreen));
     }
   };
   const handleSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

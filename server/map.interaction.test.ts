@@ -26,6 +26,8 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('aria-label={isMapCategoryBarOpen ? "지도 카테고리 접기" : "지도 카테고리 펼치기"}');
     expect(homeSource).toContain("isNearbyCategoryPickerOpen");
     expect(homeSource).toContain('aria-label={isNearbyCategoryPickerOpen ? "주변 추천 카테고리 접기" : "주변 추천 카테고리 펼치기"}');
+    expect(homeSource).toContain('const keepFullscreen = isMapFullscreen && screen === "map"');
+    expect(homeSource).toContain('if (!keepFullscreen) setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode("expanded")');
     expect(homeSource).toContain('setSheetMode((mode) => {');
     expect(homeSource).toContain('sheetMode !== "hidden"');
@@ -77,7 +79,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('loadNearbyPlaces(location, "전체", true)');
     expect(homeSource).toContain('const searchTypes = category === "전체" ? ["tourist_attraction", "restaurant", "cafe"]');
     expect(homeSource).toContain('aria-label="주변 장소 추천 카테고리"');
-    expect(homeSource).toContain("loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch)");
+    expect(homeSource).toContain("loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch, keepFullscreen)");
     expect(homeSource).toContain('현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페"');
     expect(homeSource).toContain('aria-pressed={openNowOnly}');
     expect(homeSource).toContain("현재 영업 중");
