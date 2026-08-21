@@ -728,10 +728,14 @@ describe("home place search flow", () => {
 
   it("opens a full map view when the map canvas is tapped", async () => {
     const user = userEvent.setup();
-    render(<Home />);
+    const { container } = render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "지도 빈 영역" }));
     expect(screen.getByRole("button", { name: "전체 지도 닫기" })).toBeTruthy();
+    const fullscreenSearch = container.querySelector(".route-map-screen.is-map-fullscreen .route-map-search") as HTMLButtonElement;
+    expect(fullscreenSearch).toBeTruthy();
+    await user.click(fullscreenSearch);
+    expect(screen.getByRole("textbox")).toBeTruthy();
   });
 
   it("shows and manages recent map regions in the region picker", async () => {
