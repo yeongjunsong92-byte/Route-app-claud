@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { toast } from "sonner";
@@ -272,6 +272,38 @@ describe("home place search flow", () => {
       expect(screen.getByRole("textbox", { name: "지역 검색" })).toBeTruthy();
     } finally {
       Object.defineProperty(navigator, "geolocation", { configurable: true, value: originalGeolocation });
+    }
+  });
+
+  it("automatically replaces the bottom sheet with distance-sorted nearby recommendations after current location is allowed", async () => {
+    const originalGeolocation = navigator.geolocation;
+    const originalGoogle = (window as typeof window & { google?: unknown }).google;
+    class Marker {
+      setMap = vi.fn();
+      addListener = vi.fn();
+    }
+    class PlacesService {
+      nearbySearch = vi.fn((_request: unknown, callback: (results: unknown[], status: string) => void) => callback([
+        { place_id: "near-far", name: "조금 먼 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.570, lng: () => 127.080 } } },
+        { place_id: "near-close", name: "가까운 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.566, lng: () => 127.078 } } },
+      ], "OK"));
+    }
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition: (success: PositionCallback) => success({ coords: { latitude: 37.565, longitude: 127.077 } } as GeolocationPosition) },
+    });
+    Object.defineProperty(window, "google", {
+      configurable: true,
+      value: { maps: { Marker, Size: class {}, Point: class {}, places: { PlacesService, PlacesServiceStatus: { OK: "OK" } } } },
+    });
+    try {
+      render(<Home />);
+      await waitFor(() => expect(screen.getByText("현재 위치 주변 전체 추천")).toBeTruthy());
+      const recommendationRows = screen.getAllByRole("group", { name: /장소 작업/ });
+      expect(recommendationRows.map((row) => row.getAttribute("aria-label"))).toEqual(["가까운 카페 장소 작업", "조금 먼 카페 장소 작업"]);
+    } finally {
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: originalGeolocation });
+      Object.defineProperty(window, "google", { configurable: true, value: originalGoogle });
     }
   });
 

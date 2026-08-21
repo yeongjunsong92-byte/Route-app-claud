@@ -66,6 +66,11 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('aria-label="예시 코스"');
     expect(homeSource).toContain("route-tutorial-example-route");
     expect(homeSource).toContain("const nearbyOrigin = userLocation || selectedRegion");
-    expect(homeSource).toContain("normalized.sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b))");
+    expect(homeSource).toContain("}).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b))");
+    expect(homeSource).toContain("function loadNearbyPlaces(origin");
+    expect(homeSource).toContain('loadNearbyPlaces(location, "전체", true)');
+    expect(homeSource).toContain('if (category !== "전체") request.type = typeByCategory[category]');
+    expect(homeSource).toContain("loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch)");
+    expect(homeSource).toContain('현재 위치 주변 ${filter} 추천');
   });
 });

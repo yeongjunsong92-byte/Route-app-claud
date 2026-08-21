@@ -1608,6 +1608,41 @@ export default function Home() {
     setPlacePredictions([]);
     searchPlaces(prediction.description);
   };
+  function loadNearbyPlaces(origin: { lat: number; lng: number }, category: string, isCurrentLocationSearch: boolean) {
+    const map = mainMapRef.current;
+    if (!map || !window.google?.maps?.places) {
+      toast.error("지도를 불러오는 중입니다. 잠시 후 다시 선택해 주세요.");
+      return;
+    }
+    const typeByCategory: Record<string, string> = { "맛집": "restaurant", "카페": "cafe", "관광지": "tourist_attraction", "숙소": "lodging" };
+    setPlacesLoading(true);
+    const service = new google.maps.places.PlacesService(map);
+    const request: google.maps.places.PlaceSearchRequest = { location: origin, radius: 5000 };
+    if (category !== "전체") request.type = typeByCategory[category];
+    service.nearbySearch(request, (results, status) => {
+      setPlacesLoading(false);
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+        setHasLiveSearch(true);
+        setLivePlaces([]);
+        setSheetMode("expanded");
+        toast.message(`${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변에 ${category === "전체" ? "추천 장소" : category} 결과가 없습니다.`);
+        return;
+      }
+      const normalized = results.slice(0, 12).flatMap((result, index): Place[] => {
+        const lat = result.geometry?.location?.lat();
+        const lng = result.geometry?.location?.lng();
+        if (lat === undefined || lng === undefined) return [];
+        const openNow = getGooglePlaceOpenNow(result.opening_hours);
+        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || category, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${category === "전체" ? "추천" : category} 검색 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
+      }).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b));
+      setHasLiveSearch(true);
+      setLivePlaces(normalized);
+      setMapPreviewPlace(normalized[0] || null);
+      setSheetMode("expanded");
+      map.panTo(origin);
+      map.setZoom(14);
+    });
+  }
   function moveToCurrentLocation(onResolved?: (location: { lat: number; lng: number }) => void) {
     const map = mainMapRef.current;
     if (!map) {
@@ -1635,6 +1670,10 @@ export default function Home() {
         zIndex: 120,
       });
       onResolved?.(location);
+      if (!onResolved) {
+        setFilter("전체");
+        loadNearbyPlaces(location, "전체", true);
+      }
       toast.success("현재 위치로 이동했습니다.");
     }, (error) => {
       if (error.code === error.PERMISSION_DENIED) setIsLocationPermissionHelpOpen(true);
@@ -1689,53 +1728,12 @@ export default function Home() {
   };
   const searchNearbyCategory = (category: string) => {
     setFilter(category);
-    if (category === "전체") {
-      setHasLiveSearch(false);
-      setLivePlaces([]);
-      setSheetMode("peek");
-      if (userLocation) mainMapRef.current?.panTo(userLocation);
-      return;
-    }
-    const runNearbySearch = (origin: { lat: number; lng: number }) => {
-      const map = mainMapRef.current;
-      if (!map || !window.google?.maps?.places) {
-        toast.error("지도를 불러오는 중입니다. 잠시 후 다시 선택해 주세요.");
-        return;
-      }
-      const typeByCategory: Record<string, string> = { "맛집": "restaurant", "카페": "cafe", "관광지": "tourist_attraction", "숙소": "lodging" };
-      const isCurrentLocationSearch = Boolean(userLocation && Math.abs(origin.lat - userLocation.lat) < 0.00001 && Math.abs(origin.lng - userLocation.lng) < 0.00001);
-      setPlacesLoading(true);
-      const service = new google.maps.places.PlacesService(map);
-      service.nearbySearch({ location: origin, radius: 5000, type: typeByCategory[category] }, (results, status) => {
-        setPlacesLoading(false);
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
-          setHasLiveSearch(true);
-          setLivePlaces([]);
-          setSheetMode("expanded");
-          toast.message(`현재 위치 주변에 ${category} 결과가 없습니다.`);
-          return;
-        }
-        const normalized = results.slice(0, 12).flatMap((result, index): Place[] => {
-          const lat = result.geometry?.location?.lat();
-          const lng = result.geometry?.location?.lng();
-          if (lat === undefined || lng === undefined) return [];
-          const openNow = getGooglePlaceOpenNow(result.opening_hours);
-          return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || category, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${category} 검색 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: openNow === true ? "현재 영업 중" : openNow === false ? "현재 영업 종료" : "영업시간은 Google Maps에서 확인", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
-        });
-        normalized.sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b));
-        setHasLiveSearch(true);
-        setLivePlaces(normalized);
-        setMapPreviewPlace(normalized[0] || null);
-        setSheetMode("expanded");
-        map.panTo(origin);
-        map.setZoom(14);
-      });
-    };
     const nearbyOrigin = userLocation || selectedRegion;
-    if (nearbyOrigin) runNearbySearch(nearbyOrigin);
+    const isCurrentLocationSearch = Boolean(userLocation);
+    if (nearbyOrigin) loadNearbyPlaces(nearbyOrigin, category, isCurrentLocationSearch);
     else {
       toast.message("현재 위치를 확인하거나 원하는 지역을 선택해 주세요.");
-      moveToCurrentLocation(runNearbySearch);
+      moveToCurrentLocation((location) => loadNearbyPlaces(location, category, true));
     }
   };
   const handleSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
