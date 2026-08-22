@@ -36,7 +36,7 @@ const placeInput = z.object({
   imageUrl: z.string().url().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
-  hours: z.string().max(255).optional(),
+  hours: z.string().max(255).nullable().optional().transform((value) => value ?? ""),
   note: z.string().optional(),
 });
 

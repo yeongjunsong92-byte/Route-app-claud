@@ -36,7 +36,7 @@ vi.mock("@/lib/trpc", () => {
   const query = () => ({ data: [], isLoading: false, isError: false });
   const ownedCourse = { id: 101, title: "성수 하루 코스", region: "서울", coverImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", startDate: null, endDate: null, status: "planned" };
   const ownedCourseDetail = { ...ownedCourse, items: [
-    { placeId: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", lat: 37.544, lng: 127.056, durationMinutes: 60, dayNumber: 1, visitTime: "14:00", estimatedCost: 10000 },
+    { placeId: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", lat: 37.544, lng: 127.056, hours: null, durationMinutes: 60, dayNumber: 1, visitTime: "14:00", estimatedCost: 10000 },
     { placeId: "p2", name: "오븐 성수", category: "카페", address: "서울 성동구 연무장길 7", lat: 37.545, lng: 127.057, durationMinutes: 60, dayNumber: 1, visitTime: "15:40", estimatedCost: 15000 },
     { placeId: "p3", name: "성수동 스테이크", category: "맛집", address: "서울 성동구 아차산로 403", lat: 37.547, lng: 127.058, durationMinutes: 90, dayNumber: 1, visitTime: "17:00", estimatedCost: 50000 },
   ] };
