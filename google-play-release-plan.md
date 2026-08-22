@@ -2,6 +2,8 @@
 
 > **결론부터:** Route를 Google Play에서 **무료 앱**으로 배포할 수 있습니다. 다만 무료는 앱 가격·구독·인앱 결제를 받지 않는다는 뜻이며, Play Console 개발자 계정 등록은 별도의 일회성 등록비와 신원 확인이 필요합니다.[1] 현재 Route는 React·Express 웹앱이므로, 먼저 Android 앱 번들(AAB)로 전환해야 합니다.
 
+> **2026-08-22 현재 상태:** Route는 매니페스트, 서비스 워커, 홈 화면 설치 안내를 갖춘 **PWA**로 구성되어 비용 없이 URL 배포·홈 화면 설치가 가능합니다. 다만 Android/Capacitor 프로젝트, AAB, 확정 운영 도메인, Android용 OAuth 복귀 설정은 아직 없으므로 Play Console에 제출할 단계는 아닙니다. PWA는 Play 스토어 AAB를 대체하지 않습니다.
+
 ## 1. 가장 먼저 알아둘 기준
 
 | 항목 | Route 기준 결정 |
@@ -26,6 +28,16 @@
 | 5 | 외부 앱 연결 | 네이버 길안내와 링크 공유는 WebView의 임시 동작에 의존하지 않고 Capacitor Browser·App URL 열기·Share 방식으로 실기기 검증합니다. |
 | 6 | 인증 전환 | 현재 OAuth 로그인 결과가 Android 앱으로 안정적으로 복귀하도록 HTTPS App Link 또는 custom scheme과 운영 콜백 URL을 구성합니다. |
 | 7 | AAB 생성 | Android Studio에서 `versionCode`를 매 업로드마다 증가시키고, API 36 target으로 signed release AAB를 생성합니다.[3] [4] |
+
+### Android 전환 착수 전 확정할 값
+
+| 항목 | 현재 상태 | 출시 전 필요한 결정 |
+|---|---|---|
+| 운영 도메인 | PWA는 현재 HTTPS 웹 배포 구조를 사용 | Publish 후 고정 운영 도메인을 확정하고 API·OAuth 허용 목록에 반영 |
+| Android 패키지명 | 미생성 | 예: `com.routeapp.route`처럼 Play에서 재사용하지 않을 식별자 확정 |
+| Android 프로젝트 | 미생성 | Capacitor Android 프로젝트와 서명 키 생성 |
+| AAB | 미생성 | API 36 이상 target의 signed release AAB 생성 |
+| Play Console | 로그인·등록 미확인 | 개인 계정 등록·신원 확인·테스트 기기 인증 완료 |
 
 ## 3. Play Console 최초 설정
 
