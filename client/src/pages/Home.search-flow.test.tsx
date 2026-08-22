@@ -543,6 +543,20 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "성수 식당 기록" })).toBeTruthy();
   });
 
+  it("returns to the active route instead of the map after using directions from an active course", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "홈" }));
+    await user.click(screen.getByRole("button", { name: /코스 이어가기/ }));
+    await user.click(screen.getByRole("button", { name: "길안내" }));
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "뒤로" }));
+    expect(await screen.findByText("시간, 순서, 실제 메모까지")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "길찾기" })).toBeNull();
+  });
+
   it("opens the completion celebration when the server confirms every place is complete", async () => {
     const user = userEvent.setup();
     render(<Home />);
