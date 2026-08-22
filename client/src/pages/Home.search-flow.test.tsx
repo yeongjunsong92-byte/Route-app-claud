@@ -52,7 +52,7 @@ vi.mock("@/lib/trpc", () => {
   const savedPlacesQuery = () => ({ data: [{ id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 }], isLoading: false, isError: false });
   return {
     trpc: {
-      places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
+      places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, refreshSource: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
       courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, start: { useMutation: mutation }, updateProgress: { useMutation: () => ({ mutateAsync: vi.fn().mockResolvedValue({ courseId: 101, completedPlaceIds: ["p1", "p2", "p3"], status: "completed", completedAt: new Date("2026-08-22T00:00:00.000Z") }), isPending: false }) }, updateTravelRecord: { useMutation: mutation }, uploadTravelPhoto: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation }, uploadProfileAvatar: { useMutation: mutation } },
@@ -138,7 +138,7 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
     expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
-    expect(screen.getByText("네이버 내비에서 길안내를 시작하세요")).toBeTruthy();
+    expect(screen.getByText("원하는 지도 앱에서 확인하세요")).toBeTruthy();
   });
 
   it("keeps navigation available from the detail page opened by a map pin", async () => {
@@ -148,8 +148,9 @@ describe("home place search flow", () => {
     await user.click(screen.getAllByRole("button", { name: "성수 식당" })[0]);
     expect(container.querySelector(".route-map-place-preview")).toBeNull();
     expect(await screen.findByRole("heading", { name: "성수 식당" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
-    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Google Maps/ })).toBeTruthy();
   });
 
   it("expands and fully collapses the nearby-place sheet with vertical drags", () => {
@@ -458,21 +459,20 @@ describe("home place search flow", () => {
     expect(screen.queryByRole("dialog", { name: "성수 식당 사진 갤러리" })).toBeNull();
   });
 
-  it("opens a distance-only overview and prioritizes Naver navigation with a website fallback", async () => {
+  it("opens a distance-only overview with Google and Kakao map options", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
     await user.click(getPlaceMainButton("성수 식당"));
-    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
 
-    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
-    expect(screen.getByText("교통수단별 예상 시간")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).getAttribute("href")).toContain("nmap://navigation");
-    expect(screen.queryByRole("link", { name: /Google Maps/ })).toBeNull();
-    expect(screen.queryByRole("link", { name: /카카오맵/ })).toBeNull();
+    expect(screen.getAllByText(/직선 거리/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("google.com/maps/dir");
+    expect(screen.getByRole("link", { name: /카카오맵/ }).getAttribute("href")).toContain("map.kakao.com/link/to/");
+    expect(screen.queryByText(/네이버 내비/)).toBeNull();
   });
 
-  it("sets a direct navigation origin, saves it as a favorite, and updates external directions", async () => {
+  it("sets a direct navigation origin and updates external directions", async () => {
     const user = userEvent.setup();
     const { container } = render(<Home />);
 
@@ -482,93 +482,30 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "적용" }));
 
     expect(screen.getAllByText("오븐 성수").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).getAttribute("href")).toContain("slat=37.545&slng=127.0565");
-    await user.click(screen.getByRole("button", { name: "출발지 변경" }));
-    await user.click(screen.getByRole("button", { name: "현재 출발지 즐겨찾기 추가" }));
-
-    expect(JSON.parse(window.localStorage.getItem("route-navigation-origin-favorites") || "[]")).toHaveLength(1);
-    expect(container.querySelector(".route-navigation-favorites")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Google Maps/ }).getAttribute("href")).toContain("origin=37.545%2C127.0565");
+    expect(screen.queryByRole("link", { name: /네이버지도/ })).toBeNull();
   });
 
-  it("opens the fixed place-detail Naver button into a destination confirmation sheet with travel-mode estimates", async () => {
+  it("opens the fixed place-detail directions button into the general directions screen", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
     await user.click(getPlaceMainButton("성수 식당"));
-    await user.click(screen.getByRole("button", { name: "성수 식당 네이버 내비" }));
+    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
 
-    expect(screen.getByRole("dialog", { name: "네이버 내비 출발 확인" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "길찾기" })).toBeTruthy();
     expect(screen.getAllByText("서울 성동구 연무장7길 5").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: /대중교통/ }));
-    expect(screen.getByRole("button", { name: /대중교통/ }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("link", { name: /네이버 내비로 출발/ }).textContent).toContain("대중교통 기준 선택됨");
+    expect(screen.getByRole("link", { name: /Google Maps/ })).toBeTruthy();
+    expect(screen.queryByText(/네이버 내비/)).toBeNull();
   });
 
-  it("offers Naver web directions in unsupported browser environments", async () => {
+  it("does not show Naver navigation entry points in the directions screen", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
-    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-    await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
-
-    expect(screen.getByRole("dialog", { name: "네이버 내비 설치 안내" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /네이버지도 웹에서 길찾기/ }).getAttribute("href")).toContain("map.naver.com/p/search/");
-  });
-
-  it("opens the Google Play installation page for Android navigation users", async () => {
-    const originalUserAgent = navigator.userAgent;
-    Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36" });
-    const user = userEvent.setup();
-    const toastMessage = vi.spyOn(toast, "message");
-    try {
-      render(<Home />);
-      await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
-      await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-      await user.click(screen.getByRole("button", { name: "네이버 내비 앱이 설치되어 있지 않나요?" }));
-
-      expect(screen.getByRole("link", { name: /Google Play에서 네이버지도 설치/ }).getAttribute("href")).toContain("play.google.com/store/apps/details?id=com.nhn.android.nmap");
-      fireEvent.click(screen.getByRole("link", { name: /Google Play에서 네이버지도 설치/ }));
-      expect(toastMessage).toHaveBeenCalledWith("Google Play로 이동합니다.", expect.objectContaining({ description: expect.stringContaining("네이버지도를 설치한 뒤") }));
-    } finally {
-      Object.defineProperty(navigator, "userAgent", { configurable: true, value: originalUserAgent });
-    }
-  });
-
-  it("stores a Naver destination for reuse and exposes map-based origin selection in the confirmation sheet", async () => {
-    const user = userEvent.setup();
-    const openNaverMap = vi.spyOn(window, "open").mockImplementation(() => null);
-    render(<Home />);
-
-    await user.click(screen.getByRole("button", { name: "성수 식당 길찾기" }));
-    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-    await user.click(screen.getByRole("button", { name: "지도에서 출발지 선택" }));
-
-    expect(screen.getByRole("region", { name: "지도에서 출발지 선택" })).toBeTruthy();
-    expect(screen.getByText("지도의 위치를 눌러 출발지를 선택하세요.")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "네이버 내비 출발 확인 닫기" }));
-
-    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-    fireEvent.click(screen.getByRole("link", { name: /네이버 내비로 출발/ }));
-    const storedDestinations = JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]");
-    expect(storedDestinations[0].name).toBe("성수 식당");
-    expect(storedDestinations[0].lastStartedAt).toEqual(expect.any(Number));
-    expect(openNaverMap).toHaveBeenCalledWith(expect.stringContaining("map.naver.com/p/search/"), "_blank", "noopener,noreferrer");
-    openNaverMap.mockRestore();
-
-    await user.click(screen.getByRole("link", { name: /네이버 내비 열기/ }));
-    expect(screen.getByRole("region", { name: "최근 목적지" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 선택" })).toBeTruthy();
-    expect(screen.getByText(/마지막 출발/)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "성수 식당 최근 목적지 즐겨찾기 등록" }));
-    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")[0].isFavorite).toBe(true);
-    expect(screen.getByRole("button", { name: "성수 식당 최근 목적지 즐겨찾기 해제" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "최근 목적지 관리" }));
-    const managerDialog = screen.getByRole("dialog", { name: "최근 목적지 관리" });
-    expect(managerDialog).toBeTruthy();
-    await user.click(within(managerDialog).getByRole("button", { name: "성수 식당 최근 목적지 삭제" }));
-    expect(JSON.parse(window.localStorage.getItem("route-navigation-recent-destinations") || "[]")).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: /네이버지도/ })).toBeNull();
+    expect(screen.queryByText(/네이버 내비/)).toBeNull();
   });
 
   it("opens the direction-sharing sheet with link copy and KakaoTalk share actions", async () => {

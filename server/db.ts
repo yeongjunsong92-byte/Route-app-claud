@@ -82,6 +82,16 @@ export type SavedPlaceRecordInput = {
   personalPhotoKey?: string | null;
 };
 
+export type SavedPlaceSourceInput = {
+  name: string;
+  category?: string;
+  address?: string;
+  imageUrl?: string | null;
+  lat?: number;
+  lng?: number;
+  hours?: string;
+};
+
 export async function listSavedPlaces(userId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -106,6 +116,23 @@ export async function updateSavedPlaceRecord(userId: number, savedPlaceId: numbe
   const owned = await db.select({ id: savedPlaces.id }).from(savedPlaces).where(and(eq(savedPlaces.id, savedPlaceId), eq(savedPlaces.userId, userId))).limit(1);
   if (!owned[0]) throw new Error("Saved place not found or not owned by user");
   await db.update(savedPlaces).set(input).where(eq(savedPlaces.id, savedPlaceId));
+  return { updated: true } as const;
+}
+
+export async function refreshSavedPlaceSource(userId: number, savedPlaceId: number, input: SavedPlaceSourceInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const owned = await db.select({ id: savedPlaces.id }).from(savedPlaces).where(and(eq(savedPlaces.id, savedPlaceId), eq(savedPlaces.userId, userId))).limit(1);
+  if (!owned[0]) throw new Error("Saved place not found or not owned by user");
+  await db.update(savedPlaces).set({
+    name: input.name,
+    category: input.category,
+    address: input.address,
+    imageUrl: input.imageUrl ?? null,
+    lat: input.lat,
+    lng: input.lng,
+    hours: input.hours,
+  }).where(eq(savedPlaces.id, savedPlaceId));
   return { updated: true } as const;
 }
 

@@ -52,6 +52,8 @@ async function startServer() {
       scriptUrl.searchParams.set("key", apiKey);
       scriptUrl.searchParams.set("v", "weekly");
       scriptUrl.searchParams.set("libraries", "marker,places,geocoding,geometry");
+      scriptUrl.searchParams.set("language", typeof req.query.language === "string" ? req.query.language : "ko");
+      scriptUrl.searchParams.set("region", typeof req.query.region === "string" ? req.query.region : "KR");
       const requestedOrigin = typeof req.query.origin === "string" ? req.query.origin : "";
       const refererOrigin = req.get("referer") ? new URL(req.get("referer") as string).origin : "";
       const forwardedHost = req.get("x-forwarded-host") || req.get("host") || "localhost";

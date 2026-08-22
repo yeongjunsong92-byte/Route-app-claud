@@ -11,10 +11,67 @@ declare global {
 }
 
 const FRONTEND_MAP_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string | undefined;
-const MAPS_SCRIPT_PARAMS = new URLSearchParams({ origin: window.location.origin });
+const MAPS_SCRIPT_PARAMS = new URLSearchParams({
+  origin: window.location.origin,
+  language: "ko",
+  region: "KR",
+  localeVersion: "ko-KR-v1",
+});
 if (FRONTEND_MAP_KEY) MAPS_SCRIPT_PARAMS.set("key", FRONTEND_MAP_KEY);
 const MAPS_SCRIPT_URL = `/api/maps/script?${MAPS_SCRIPT_PARAMS.toString()}`;
 let mapScriptPromise: Promise<void> | null = null;
+
+/**
+ * Google 기본 도로 지도를 Route의 탐색 단계에 맞게 정리한다.
+ * 지도 스타일 API는 글자 크기와 개별 건물명을 직접 제어하지 않으므로,
+ * 줌 단계별로 지역·도로·POI 레이블의 노출 밀도를 조절한다.
+ */
+function routeMapStyles(zoom: number): google.maps.MapTypeStyle[] {
+  const shared: google.maps.MapTypeStyle[] = [
+    { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#5d6470" }] },
+    { featureType: "all", elementType: "labels.text.stroke", stylers: [{ color: "#FAFAFA" }, { weight: 3 }] },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
+    { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#F0F2F5" }] },
+    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#E7EBF0" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#DFF2FB" }] },
+    { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#FAFAFA" }] },
+    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#EAF5EA" }] },
+  ];
+
+  if (zoom <= 13) {
+    return [
+      ...shared,
+      { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+      { featureType: "poi.attraction", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "poi.government", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "poi.park", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "administrative.neighborhood", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "administrative.locality", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "road.local", elementType: "labels", stylers: [{ visibility: "on" }] },
+    ];
+  }
+
+  if (zoom <= 15) {
+    return [
+      ...shared,
+      { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+      { featureType: "poi.attraction", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "poi.business", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "poi.park", elementType: "labels", stylers: [{ visibility: "on" }] },
+      { featureType: "administrative.neighborhood", elementType: "labels", stylers: [{ visibility: "off" }] },
+      { featureType: "administrative.locality", elementType: "labels", stylers: [{ visibility: "off" }] },
+      { featureType: "road.local", elementType: "labels", stylers: [{ visibility: "on" }] },
+    ];
+  }
+
+  return [
+    ...shared,
+    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "on" }] },
+    { featureType: "administrative.neighborhood", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "administrative.locality", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "road.local", elementType: "labels", stylers: [{ visibility: "on" }] },
+  ];
+}
 
 function waitForGoogleMaps(timeoutMs = 15000) {
   return new Promise<void>((resolve, reject) => {
@@ -113,11 +170,13 @@ export function MapView({
       const mapInstance = new window.google.maps.Map(mapContainer.current, {
         zoom: initialZoom,
         center: initialCenter,
+        mapTypeId: "roadmap",
         mapTypeControl: false,
         fullscreenControl: false,
         zoomControl: false,
         streetViewControl: false,
         clickableIcons: false,
+        styles: routeMapStyles(initialZoom),
       });
       map.current = mapInstance;
       const checkForTiles = () => {
@@ -126,11 +185,15 @@ export function MapView({
       };
       const tilesListener = mapInstance.addListener("tilesloaded", () => window.setTimeout(checkForTiles, 180));
       const clickListener = mapInstance.addListener("click", (event: google.maps.MapMouseEvent) => onMapClickRef.current?.(event));
+      const zoomListener = mapInstance.addListener("zoom_changed", () => {
+        mapInstance.setOptions({ styles: routeMapStyles(mapInstance.getZoom() || initialZoom) });
+      });
       const tileCheckInterval = window.setInterval(checkForTiles, 400);
       onMapReadyRef.current?.(mapInstance);
       return () => {
         tilesListener.remove();
         clickListener.remove();
+        zoomListener.remove();
         window.clearInterval(tileCheckInterval);
       };
     } catch (error) {

@@ -110,7 +110,9 @@ const travelModeMeta: Record<TravelMode, { label: string; summary: string; speed
 const TravelModeContext = createContext<TravelMode>("driving");
 
 function getPlacePhotos(place: Place) {
-  return place.photos?.length ? place.photos : [place.image];
+  const verifiedPhotos = place.photos?.filter((photo) => typeof photo === "string" && photo.length > 0) || [];
+  if (verifiedPhotos.length) return verifiedPhotos;
+  return place.image ? [place.image] : [];
 }
 
 function parseCoursePhotoUrls(value: unknown) {
@@ -302,7 +304,7 @@ function PlaceRow({ place, onClick, onSave, distanceLabel = "350m", saveLabel = 
   const dispatchNavigation = () => window.dispatchEvent(new CustomEvent<Place>("route:navigate-place", { detail: place }));
   const hasGoogleRating = typeof place.rating === "number" && place.rating > 0 && typeof place.reviewCount === "number" && place.reviewCount > 0;
   const openingLabel = getPlaceOpeningLabel(place);
-  return <div className="route-place-row" role="group" aria-label={`${place.name} 장소 작업`}><button className="route-place-main" onClick={onClick}><img src={place.image} alt="" /><span className="route-place-copy"><strong>{place.name}</strong><small>{hasGoogleRating ? `★ ${place.rating} · 리뷰 ${place.reviewCount} · ` : ""}{place.category}</small>{openingLabel && <em className={place.openNow === false ? "is-closed" : place.openNow === true ? "is-open" : ""}>{openingLabel}</em>}<i>{place.address}</i></span><span className="route-place-distance">{distanceLabel}</span></button><button className="route-place-navigate" aria-label={`${place.name} 길찾기`} onClick={dispatchNavigation}><Navigation size={15} /></button><button className="route-place-save" aria-label={`${place.name} ${saveLabel}`} onClick={onSave}><Bookmark size={16} /></button></div>;
+  return <div className="route-place-row" role="group" aria-label={`${place.name} 장소 작업`}><button className="route-place-main" onClick={onClick}>{place.image ? <img src={place.image} alt="" /> : <span className="route-place-image-empty" aria-label="장소 사진 없음"><MapPin size={18} /></span>}<span className="route-place-copy"><strong>{place.name}</strong><small>{hasGoogleRating ? `★ ${place.rating} · 리뷰 ${place.reviewCount} · ` : ""}{place.category}</small>{openingLabel && <em className={place.openNow === false ? "is-closed" : place.openNow === true ? "is-open" : ""}>{openingLabel}</em>}<i>{place.address}</i></span><span className="route-place-distance">{distanceLabel}</span></button><button className="route-place-navigate" aria-label={`${place.name} 길찾기`} onClick={dispatchNavigation}><Navigation size={15} /></button><button className="route-place-save" aria-label={`${place.name} ${saveLabel}`} onClick={onSave}><Bookmark size={16} /></button></div>;
 }
 
 function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
@@ -583,6 +585,7 @@ export default function Home() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const savePlaceMutation = trpc.places.toggleSaved.useMutation();
   const updateSavedPlaceRecordMutation = trpc.places.updateRecord.useMutation();
+  const refreshSavedPlaceSourceMutation = trpc.places.refreshSource.useMutation();
   const uploadSavedPlacePhotoMutation = trpc.places.uploadPersonalPhoto.useMutation();
   const createCourseMutation = trpc.courses.create.useMutation();
   const appendPlaceMutation = trpc.courses.appendPlace.useMutation();
@@ -858,7 +861,7 @@ export default function Home() {
       category: place.category || "관광지",
       address: place.address || "주소 정보 없음",
       image: place.imageUrl || mockPlaces[0].image,
-      description: "내 장소에 저장한 여행 장소입니다.",
+      description: "실제 Google Maps 저장 결과입니다.",
       rating: 0,
       reviewCount: 0,
       lat: place.lat,
@@ -868,6 +871,7 @@ export default function Home() {
     }];
   }), [savedPlacesQuery.data]);
   const savedPlaceIds = useMemo(() => new Set((savedPlacesQuery.data || []).map((place: any) => place.placeId)), [savedPlacesQuery.data]);
+  const savedPlaceRecordByPlaceId = useMemo(() => new Map((savedPlacesQuery.data || []).map((place: any) => [place.placeId, place])), [savedPlacesQuery.data]);
   const editPlaceCandidates = useMemo(() => {
     const byId = new Map<string, Place>();
     [...savedMapPlaces, ...livePlaces, ...mockPlaces].forEach((place) => byId.set(place.id, place));
@@ -915,6 +919,19 @@ export default function Home() {
       setSelectedPlace((current) => current?.id === place.id ? enriched : current);
       setMapPreviewPlace((current) => current?.id === place.id ? enriched : current);
       setLivePlaces((current) => current.map((item) => item.id === place.id ? enriched : item));
+      const savedRecord = savedPlaceRecordByPlaceId.get(place.id);
+      if (savedRecord) {
+        void refreshSavedPlaceSourceMutation.mutateAsync({
+          savedPlaceId: savedRecord.id,
+          name: enriched.name,
+          category: enriched.category,
+          address: enriched.address,
+          imageUrl: enriched.image || null,
+          lat: enriched.lat,
+          lng: enriched.lng,
+          hours: enriched.hours,
+        }).then(() => trpcUtils.places.saved.invalidate()).catch(() => undefined);
+      }
     });
   };
   const openPlace = (place: Place, returnScreen: Screen = screen === "active-course" ? "active-course" : "map") => {
@@ -2198,7 +2215,7 @@ export default function Home() {
           name: result.name || keyword,
           category: categoryFromPlaceTypes(result.types),
           address: result.formatted_address || result.vicinity || "주소 정보 없음",
-          image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image,
+          image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || "",
           description: `${result.name || keyword}의 실제 지도 검색 결과입니다.`,
           rating: result.rating || 0,
           reviewCount: result.user_ratings_total || 0,
@@ -2261,7 +2278,7 @@ export default function Home() {
         const lng = result.geometry?.location?.lng();
         if (lat === undefined || lng === undefined) return [];
         const openNow = getGooglePlaceOpenNow(result.opening_hours);
-        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || categoryLabel, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || mockPlaces[index % mockPlaces.length].image, description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${categoryLabel} 추천 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: getGooglePlaceTodayHours(result.opening_hours) || "", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
+        return [{ id: result.place_id || `nearby-${category}-${index}`, name: result.name || categoryLabel, category: categoryFromPlaceTypes(result.types), address: result.vicinity || result.formatted_address || "주소 정보 없음", image: result.photos?.[0]?.getUrl({ maxWidth: 720, maxHeight: 480 }) || "", description: `${isCurrentLocationSearch ? "현재 위치" : "선택 지역"} 주변 ${categoryLabel} 추천 결과입니다.`, rating: result.rating || 0, reviewCount: result.user_ratings_total || 0, lat, lng, hours: getGooglePlaceTodayHours(result.opening_hours) || "", phone: "", photos: result.photos?.slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 720, maxHeight: 480 })) || [], openNow }];
       }).sort((a, b) => distanceInMeters(origin, a) - distanceInMeters(origin, b)).slice(0, 12);
       setHasLiveSearch(true);
       setLivePlaces(normalized);
@@ -2458,7 +2475,7 @@ export default function Home() {
     return <div className="route-screen route-detail-screen"><section className="route-detail-location-section" aria-label="장소 위치 지도"><div className="route-detail-map">{renderMap(true)}<button className="route-floating-back" aria-label="지도 화면으로 돌아가기" onClick={restoreMapFromPlaceDetail}><ArrowLeft size={18} /></button><button className="route-floating-share" aria-label="장소 공유" onClick={() => void shareSelectedPlace()}><Share2 size={16} /></button></div><div className="route-detail-location-summary"><span><MapPin size={15} /> 지도 위치</span><strong>{selectedPlace.address}</strong></div></section><div className="route-place-detail-card"><section className="route-detail-photo-section" aria-label="장소 사진"><div className="route-detail-section-heading"><h3>사진</h3><span>{getPlacePhotos(selectedPlace).length}장</span></div><div className="route-detail-images">{photos.map((photo, index) => <button key={`${photo}-${index}`} aria-label={`${selectedPlace.name} 사진 ${index + 1} 확대`} onClick={() => { setGalleryIndex(index); setIsGalleryOpen(true); }}><img src={photo} alt={`${selectedPlace.name} 사진 ${index + 1}`} />{index === 2 && getPlacePhotos(selectedPlace).length > 3 && <span>+{getPlacePhotos(selectedPlace).length - 3}</span>}</button>)}</div></section><div className="route-detail-body"><div className="route-detail-title-row"><div><h2>{selectedPlace.name}</h2><p>{typeof selectedPlace.rating === "number" && selectedPlace.rating > 0 && typeof selectedPlace.reviewCount === "number" && selectedPlace.reviewCount > 0 ? `★ ${selectedPlace.rating} (${selectedPlace.reviewCount}) · ` : ""}{selectedPlace.category}</p></div><button aria-label={`${selectedPlace.name} 저장`} onClick={() => openSaveSheet(selectedPlace)}><Bookmark size={18} /></button></div><section className="route-detail-intro"><h3>장소 소개</h3><p className="route-detail-description">{selectedPlace.description}</p></section>{(openingLabel || selectedPlace.phone) && <section className="route-detail-basic-info" aria-label="기본 정보"><h3>기본 정보</h3>{openingLabel && <p><span><Clock3 size={14} /> 영업시간</span><strong>{openingLabel}</strong></p>}{selectedPlace.phone && <p><span><Users size={14} /> 전화번호</span><strong>{selectedPlace.phone}</strong></p>}</section>}<div className="route-detail-external-links"><a className="route-naver-link" href={naverReservationUrl(selectedPlace)} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>{naverReservationLabel(selectedPlace)}</strong><small>{selectedPlace.website ? "네이버 예약 또는 장소 페이지로 이동합니다." : "네이버 검색에서 예약·문의 가능 여부를 확인합니다."}</small></span><ChevronRight size={15} /></a><a className="route-naver-sub-link" href={naverMapSearchUrl(selectedPlace)} target="_blank" rel="noreferrer">네이버 지도에서 장소 보기 <ChevronRight size={13} /></a></div></div><div className="route-detail-actions"><button className="secondary" onClick={() => openSaveSheet(selectedPlace)}>저장</button><button onClick={() => openCoursePicker(selectedPlace)}>코스에 추가</button></div></div>{saveSheetOpen && renderSaveSheet()}</div>;
   };
 
-  const renderPlaceDetailWithNavigation = () => <>{renderPlaceDetail()}{selectedPlace && <button className="route-place-navigation-fab route-place-naver-fab" aria-label={`${selectedPlace.name} 네이버 내비`} onClick={() => openNaverNavigationConfirmation(selectedPlace)}><span>N</span><Navigation size={16} />네이버 내비</button>}</>;
+  const renderPlaceDetailWithNavigation = () => <>{renderPlaceDetail()}{selectedPlace && <button className="route-place-navigation-fab" aria-label={`${selectedPlace.name} 길찾기`} onClick={() => openPlaceNavigation(selectedPlace)}><Navigation size={16} />길찾기</button>}</>;
   const renderNaverNavigation = () => {
     if (!navigationPlace) return <div className="route-screen route-empty"><ScreenHeader title="네이버 내비" onBack={() => setScreen(navigationBackScreen)} /><strong>목적지를 선택해 주세요.</strong></div>;
     const originStop: RouteStop = { name: navigationOrigin.label, lat: navigationOrigin.lat, lng: navigationOrigin.lng };
@@ -2487,6 +2504,16 @@ export default function Home() {
     const closeManager = () => setIsRecentDestinationManagerOpen(false);
     return <div className="route-overlay route-recent-destination-overlay" onClick={closeManager}><section className="route-recent-destination-sheet" role="dialog" aria-modal="true" aria-label="최근 목적지 관리" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-recent-destination-manager-heading"><div><span>RECENT DESTINATIONS</span><h3>최근 목적지 관리</h3><p>즐겨찾기는 목록 상단에 고정됩니다.</p></div><button aria-label="최근 목적지 관리 닫기" onClick={closeManager}><X size={17} /></button></div>{recentNavigationDestinations.length ? <><div className="route-recent-destination-manager-list">{orderRecentNavigationDestinations(recentNavigationDestinations).map((place) => <div className={place.isFavorite ? "is-favorite" : ""} key={place.id}><MapPin size={16} /><span><strong>{place.isFavorite && <Heart size={11} fill="currentColor" />} {place.name}</strong><small>{place.address}</small><em>{formatRecentNavigationStartedAt(place.lastStartedAt)}</em></span><button className={place.isFavorite ? "is-favorite" : ""} aria-label={`${place.name} 최근 목적지 ${place.isFavorite ? "즐겨찾기 해제" : "즐겨찾기 등록"}`} onClick={() => toggleRecentNavigationDestinationFavorite(place.id)}><Heart size={15} fill={place.isFavorite ? "currentColor" : "none"} /></button><button aria-label={`${place.name} 최근 목적지 삭제`} onClick={() => removeRecentNavigationDestination(place.id)}><X size={15} /></button></div>)}</div><button className="route-recent-destination-clear-all" onClick={clearRecentNavigationDestinations}>최근 목적지 전체 삭제</button></> : <div className="route-recent-destination-empty"><Clock3 size={20} /><strong>최근 목적지가 없습니다</strong><span>네이버 내비 출발 후 이곳에서 관리할 수 있어요.</span></div>}</section></div>;
   };
+
+  const renderRouteDirections = () => {
+    if (!navigationPlace) return <div className="route-screen route-empty"><ScreenHeader title="길찾기" onBack={() => setScreen("map")} /><strong>목적지를 선택해 주세요.</strong></div>;
+    const Icon = travelModeMeta[travelMode].icon;
+    const originStop: RouteStop = { name: navigationOrigin.label, lat: navigationOrigin.lat, lng: navigationOrigin.lng };
+    const destinationStop: RouteStop = { name: navigationPlace.name, lat: navigationPlace.lat, lng: navigationPlace.lng };
+    return <div className="route-screen route-place-navigation"><ScreenHeader title="길찾기" onBack={() => setScreen(navigationBackScreen || (selectedPlace ? "place-detail" : "map"))} /><section className="route-navigation-destination"><div className="route-navigation-origin"><LocateFixed size={15} /><span><small>출발</small><strong>{navigationOrigin.label}</strong><em>{navigationOrigin.address}</em></span><button aria-label="출발지 변경" onClick={() => setIsNavigationOriginEditorOpen((open) => !open)}><Pencil size={14} /> 변경</button></div><div className="route-navigation-line" /><div className="route-navigation-arrival"><MapPin size={16} /><span><small>도착</small><strong>{navigationPlace.name}</strong><em>{navigationPlace.address}</em></span></div></section>{isNavigationOriginEditorOpen && <section className="route-navigation-origin-editor" aria-label="출발지 지정"><div className="route-navigation-origin-editor-heading"><div><span>STARTING POINT</span><h3>출발지를 직접 지정하세요</h3></div><button aria-label="출발지 지정 닫기" onClick={() => setIsNavigationOriginEditorOpen(false)}><X size={15} /></button></div><div className="route-navigation-origin-input"><MapPin size={15} /><input aria-label="출발지 입력" value={navigationOriginQuery} onChange={(event) => setNavigationOriginQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") resolveNavigationOrigin(); }} placeholder="집, 학교, 주소를 입력하세요" /><button onClick={resolveNavigationOrigin}>적용</button></div><button className="route-navigation-current-origin" onClick={() => { setNavigationOriginOverride(null); setNavigationOriginQuery(""); if (!userLocation) moveToCurrentLocation(); }}><LocateFixed size={14} /> 현재 위치 사용</button></section>}{renderTravelModeSelector()}<DistanceOverviewMap key={`route-directions-${navigationPlace.id}-${navigationOrigin.lat}-${navigationOrigin.lng}`} origin={originStop} destination={destinationStop} /><section className="route-navigation-summary"><Icon size={20} /><div><small>{travelModeMeta[travelMode].summary}</small><strong>{formatMinutes(navigationMinutes)} · 직선 거리 {formatDistance(navigationDistanceMeters)}</strong><span>예상 시간은 직선 거리와 수단별 평균 속도를 기준으로 계산됩니다.</span></div></section><section className="route-external-navigation" aria-label="외부 지도 열기"><div><span>OPEN MAP</span><h3>원하는 지도 앱에서 확인하세요</h3></div><a href={googleNavigationUrl(navigationPlace, travelMode, navigationOrigin)} target="_blank" rel="noreferrer"><span className="google">G</span><div><strong>Google Maps</strong><small>{travelModeMeta[travelMode].label} 길찾기 열기</small></div><ExternalLink size={16} /></a><a href={kakaoNavigationUrl(navigationPlace)} target="_blank" rel="noreferrer"><span className="kakao">K</span><div><strong>카카오맵</strong><small>목적지 길찾기 열기</small></div><ExternalLink size={16} /></a></section></div>;
+  };
+
+  const renderRouteDirectionsWithShare = () => <>{renderRouteDirections()}{navigationPlace && <button className="route-directions-share-trigger" aria-label="길찾기 공유" onClick={() => setIsNavigationShareOpen(true)}><Share2 size={17} /></button>}{isNavigationShareOpen && navigationPlace && <div className="route-overlay route-course-share-overlay" onClick={() => setIsNavigationShareOpen(false)}><section className="route-course-share-sheet" role="region" aria-label="길찾기 공유" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-course-share-heading"><div><span>SHARE DIRECTIONS</span><h3>{navigationPlace.name} 길찾기</h3><p>{navigationShareText}</p></div><button aria-label="길찾기 공유 닫기" onClick={() => setIsNavigationShareOpen(false)}><X size={17} /></button></div><button aria-label="길찾기 링크 복사" onClick={() => void copyNavigationShareLink()}><span className="link"><Link2 size={19} /></span><div><strong>길찾기 링크 복사</strong><small>출발지·도착지·이동 수단을 함께 전달합니다.</small></div><Copy size={16} /></button><button aria-label="카카오톡으로 길찾기 공유" onClick={() => void shareNavigation()}><span className="native"><Share2 size={19} /></span><div><strong>카카오톡으로 공유</strong><small>기기 공유 시트에서 카카오톡을 선택할 수 있습니다.</small></div><ChevronRight size={16} /></button></section></div>}</>;
 
   const renderPlaceNavigation = () => {
     if (!navigationPlace) return <div className="route-screen route-empty"><ScreenHeader title="길찾기" onBack={() => setScreen("map")} /><strong>목적지를 선택해 주세요.</strong></div>;
@@ -2674,7 +2701,7 @@ export default function Home() {
   if (screen === "map") content = <>{renderMapScreen()}{isMapEntryTransitionVisible && <RouteMapEntryLoader isExiting={isMapEntryTransitionExiting} />}</>;
   else if (screen === "search") content = renderSearchScreen();
   else if (screen === "place-detail") content = renderPlaceDetailWithNavigation();
-  else if (screen === "place-navigation") content = renderNaverNavigation();
+  else if (screen === "place-navigation") content = renderRouteDirectionsWithShare();
   else if (screen === "my-places") content = renderMyPlaces();
   else if (screen === "my-courses") content = renderMyCourses();
   else if (screen === "course-create") content = renderCourseCreateAllPlaces();
@@ -2691,5 +2718,5 @@ export default function Home() {
   else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
   const homeActiveCourse = ownedCourses.find((course) => course.status === "active");
-  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && selectedCourseStatus !== "active" && renderCourseStartAction()}{screen === "home" && homeActiveCourse && <button className="route-home-course-start" onClick={() => { setActiveCourseBackScreen("home"); setActiveCompletedPlaceIds(parseCompletedPlaceIds(homeActiveCourse.completedPlaceIds)); setActiveCourseMapMode("course"); setSelectedCourse(homeActiveCourse); setScreen("active-course"); }} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>진행 중인 코스</small><strong>코스 이어가기</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{renderNaverNavigationConfirmSheet()}{renderNaverInstallHelpSheet()}{renderRecentDestinationManager()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
+  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && selectedCourseStatus !== "active" && renderCourseStartAction()}{screen === "home" && homeActiveCourse && <button className="route-home-course-start" onClick={() => { setActiveCourseBackScreen("home"); setActiveCompletedPlaceIds(parseCompletedPlaceIds(homeActiveCourse.completedPlaceIds)); setActiveCourseMapMode("course"); setSelectedCourse(homeActiveCourse); setScreen("active-course"); }} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>진행 중인 코스</small><strong>코스 이어가기</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
 }

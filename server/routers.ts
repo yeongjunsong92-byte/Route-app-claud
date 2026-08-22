@@ -23,6 +23,7 @@ import {
   startCourse,
   toggleFollow,
   toggleSavedPlace,
+  refreshSavedPlaceSource,
   updateCourseProgress,
   updateCourseItemTravelRecord,
   updateSavedPlaceRecord,
@@ -97,6 +98,19 @@ export const appRouter = router({
   places: router({
     saved: protectedProcedure.query(({ ctx }) => listSavedPlaces(ctx.user.id)),
     toggleSaved: protectedProcedure.input(placeInput).mutation(({ ctx, input }) => toggleSavedPlace(ctx.user.id, input)),
+    refreshSource: protectedProcedure.input(z.object({
+      savedPlaceId: z.number().int().positive(),
+      name: z.string().trim().min(1).max(255),
+      category: z.string().trim().max(100).optional(),
+      address: z.string().trim().max(500).optional(),
+      imageUrl: z.string().url().nullable().optional(),
+      lat: z.number().finite().optional(),
+      lng: z.number().finite().optional(),
+      hours: z.string().max(255).optional(),
+    })).mutation(({ ctx, input }) => {
+      const { savedPlaceId, ...source } = input;
+      return refreshSavedPlaceSource(ctx.user.id, savedPlaceId, source);
+    }),
     updateRecord: protectedProcedure.input(z.object({
       savedPlaceId: z.number().int().positive(),
       customTitle: z.string().trim().max(255).nullable().optional(),
