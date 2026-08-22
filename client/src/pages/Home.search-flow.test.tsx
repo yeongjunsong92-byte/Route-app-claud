@@ -260,6 +260,18 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "프로필" })).toBeTruthy();
   });
 
+  it("guides an empty saved-course library toward public course discovery", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("tab", { name: "저장 코스" }));
+
+    expect(screen.getByText("저장한 코스가 없어요")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "공개 코스 찾아보기" }));
+    expect(screen.getByRole("heading", { name: "공개 코스" })).toBeTruthy();
+  });
+
   it("shows recent searches and applies a selected term to the search input", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("route-recent-place-searches", JSON.stringify(["성수 카페", "서울숲"]));
@@ -939,7 +951,7 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "재시도" })).toBeTruthy();
   });
 
-  it("shows direct Instagram Story download and X share controls in course detail", async () => {
+  it("shows direct link copy, device share, Instagram Story download, and X share controls in course detail", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
@@ -947,6 +959,8 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
 
     expect(screen.getByRole("region", { name: "코스 빠른 공유" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "코스 링크 복사" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "코스 공유하기" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "X에 공유" })).toBeTruthy();
     expect(screen.getByText("9:16 이미지 다운로드")).toBeTruthy();
   });
