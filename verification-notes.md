@@ -1,5 +1,11 @@
 # Route 지도 안내 기능 검증 기록
 
+## 2026-08-22 — 길찾기 복귀·GitHub 인계·iOS 출시 계획
+
+- 진행 중 코스의 **길안내**에서 길찾기 화면으로 이동할 때 진입 화면을 저장하도록 수정했다. 길찾기 헤더의 뒤로가기는 진행 코스에서 열렸다면 지도나 장소 상세가 아닌 동일한 진행 화면으로 복귀한다. 이 흐름은 홈 → 코스 이어가기 → 길안내 → 뒤로가기를 확인하는 UI 회귀 테스트로 검증했다.
+- TypeScript 검사, Vitest **89개**, 프로덕션 빌드를 통과했다. 최신 코드와 `GITHUB_HANDOFF.md`, `app-store-release-plan.md`는 GitHub `yeongjunsong92-byte/Route-app-claud`의 `manus-release-handoff-20260822` 브랜치로 인계한다.
+- `app-store-release-plan.md`에는 Capacitor 기반 iOS 전환 경로, 운영 API·OAuth·권한 설정, App Store Connect 설정값, 개인정보 처리방침·App Privacy·TestFlight·심사 체크리스트를 Apple 공식 자료 링크와 함께 정리했다.
+
 ## 2026-08-22 — 서버 기반 코스 진행 상태·홈·네이버 길안내
 
 - `courses.completedPlaceIds` JSON 텍스트 컬럼과 `courses.updateProgress` 보호된 tRPC 절차를 추가했다. 마이그레이션 `0008_dark_dragon_lord.sql`을 적용했으며, 방문 완료 시 소유자 검증 후 완료한 장소 ID만 정규화해 저장한다. 코스 상세 조회와 내 코스 목록은 해당 기록을 다시 반환하므로 앱을 다시 열어도 완료·현재·미방문 핀과 다음 일정이 복원된다.
