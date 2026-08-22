@@ -262,6 +262,16 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "새 여행자" })).toBeTruthy();
   });
 
+  it("offers Route home-screen installation from my page settings", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    const installButton = screen.getByRole("button", { name: /홈 화면에 Route 설치/ });
+    expect(installButton).toBeTruthy();
+    await user.click(installButton);
+  });
+
   it("opens the course library, switches between my and saved courses, and opens profile management from my page", async () => {
     const user = userEvent.setup();
     let view = render(<Home />);
