@@ -64,6 +64,13 @@
       "when": 1787391309378,
       "tag": "0008_dark_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1787392728797,
+      "tag": "0009_tan_lightspeed",
+      "breakpoints": true
     }
   ]
 }

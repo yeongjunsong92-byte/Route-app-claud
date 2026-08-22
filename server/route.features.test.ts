@@ -129,6 +129,10 @@ describe("Route course procedures", () => {
     await expect(caller.courses.start({ courseId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.courses.updateProgress({ courseId: 0, completedPlaceIds: ["place-1"] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.courses.updateProgress({ courseId: 1, completedPlaceIds: [""] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.updateTravelRecord({ courseId: 0, placeId: "place-1", travelNote: "메모" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.updateTravelRecord({ courseId: 1, placeId: "", travelNote: "메모" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.updateTravelRecord({ courseId: 1, placeId: "place-1", travelNote: "x".repeat(2001) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.uploadTravelPhoto({ courseId: 1, placeId: "place-1", dataUrl: "too-short" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.places.updateRecord({ savedPlaceId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

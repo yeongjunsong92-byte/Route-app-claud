@@ -79,6 +79,7 @@ export const courses = mysqlTable(
     shareImageUrl: text("shareImageUrl"),
     photoUrls: text("photoUrls"),
     completedPlaceIds: text("completedPlaceIds"),
+    completedAt: timestamp("completedAt"),
     startDate: timestamp("startDate"),
     endDate: timestamp("endDate"),
     status: mysqlEnum("status", ["planned", "active", "completed"]).default("planned").notNull(),
@@ -112,6 +113,9 @@ export const courseItems = mysqlTable(
     durationMinutes: int("durationMinutes"),
     estimatedCost: int("estimatedCost"),
     note: text("note"),
+    travelNote: text("travelNote"),
+    travelPhotoUrl: text("travelPhotoUrl"),
+    travelPhotoKey: varchar("travelPhotoKey", { length: 512 }),
   },
   (table) => ({
     courseIndex: index("course_items_course_idx").on(table.courseId),

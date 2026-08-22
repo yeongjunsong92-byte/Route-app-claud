@@ -24,6 +24,7 @@ import {
   toggleFollow,
   toggleSavedPlace,
   updateCourseProgress,
+  updateCourseItemTravelRecord,
   updateSavedPlaceRecord,
   updateCourse,
   upsertUser,
@@ -144,6 +145,26 @@ export const appRouter = router({
     }).refine(hasValidCourseDates, { message: "종료일은 시작일보다 빠를 수 없습니다.", path: ["endDate"] })).mutation(({ ctx, input }) => updateCourse(ctx.user.id, input.courseId, input)),
     start: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => startCourse(ctx.user.id, input.courseId)),
     updateProgress: protectedProcedure.input(z.object({ courseId: z.number().int().positive(), completedPlaceIds: z.array(z.string().min(1).max(255)).max(100) })).mutation(({ ctx, input }) => updateCourseProgress(ctx.user.id, input.courseId, input.completedPlaceIds)),
+    updateTravelRecord: protectedProcedure.input(z.object({
+      courseId: z.number().int().positive(),
+      placeId: z.string().min(1).max(255),
+      travelNote: z.string().trim().max(2000).nullable().optional(),
+      travelPhotoUrl: z.string().max(2000).nullable().optional(),
+      travelPhotoKey: z.string().max(512).nullable().optional(),
+    })).mutation(({ ctx, input }) => {
+      const { courseId, placeId, ...record } = input;
+      return updateCourseItemTravelRecord(ctx.user.id, courseId, placeId, record);
+    }),
+    uploadTravelPhoto: protectedProcedure.input(z.object({
+      courseId: z.number().int().positive(),
+      placeId: z.string().min(1).max(255),
+      dataUrl: z.string().min(32).max(8_500_000),
+    })).mutation(async ({ ctx, input }) => {
+      const { bytes, contentType, extension } = parseImageDataUrl(input.dataUrl);
+      const uploaded = await storagePut(`route/users/${ctx.user.id}/course-travel-records/${input.courseId}/${input.placeId}-${randomUUID()}.${extension}`, bytes, contentType);
+      await updateCourseItemTravelRecord(ctx.user.id, input.courseId, input.placeId, { travelPhotoUrl: uploaded.url, travelPhotoKey: uploaded.key });
+      return { url: uploaded.url, key: uploaded.key } as const;
+    }),
     appendPlace: protectedProcedure.input(z.object({
       courseId: z.number().int().positive(),
       place: placeInput,

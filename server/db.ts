@@ -131,7 +131,8 @@ export async function createCourse(userId: number, input: CourseInput) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.transaction(async (tx) => {
-    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), completedPlaceIds: "[]", startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false });
+    const initialStatus = input.status ?? "planned";
+    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), completedPlaceIds: "[]", completedAt: initialStatus === "completed" ? new Date() : null, startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: initialStatus, isPublic: input.isPublic ?? false });
     const courseId = Number(result[0].insertId);
     if (input.items.length > 0) {
       await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
@@ -152,7 +153,7 @@ export async function listPublicCourses() {
   return db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, completedAt: courses.completedAt, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -168,7 +169,7 @@ export async function getCourseDetails(courseId: number, viewerId?: number) {
   const course = (await db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, completedAt: courses.completedAt, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -186,11 +187,15 @@ export async function updateCourse(userId: number, courseId: number, input: Cour
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.transaction(async (tx) => {
-    const owned = await tx.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+    const owned = await tx.select({ id: courses.id, status: courses.status, completedAt: courses.completedAt }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
     if (!owned[0]) throw new Error("Course not found or not owned by user");
-    await tx.update(courses).set({ title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false }).where(eq(courses.id, courseId));
+    const nextStatus = input.status ?? owned[0].status ?? "planned";
+    const nextCompletedAt = nextStatus === "completed" ? owned[0].completedAt ?? new Date() : null;
+    const existingItems = await tx.select({ placeId: courseItems.placeId, travelNote: courseItems.travelNote, travelPhotoUrl: courseItems.travelPhotoUrl, travelPhotoKey: courseItems.travelPhotoKey }).from(courseItems).where(eq(courseItems.courseId, courseId));
+    const existingTravelRecords = new Map(existingItems.map((item) => [item.placeId, item]));
+    await tx.update(courses).set({ title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), completedAt: nextCompletedAt, startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: nextStatus, isPublic: input.isPublic ?? false }).where(eq(courses.id, courseId));
     await tx.delete(courseItems).where(eq(courseItems.courseId, courseId));
-    if (input.items.length > 0) await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
+    if (input.items.length > 0) await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId, ...(existingTravelRecords.get(item.placeId) ?? {}) })));
     return courseId;
   });
 }
@@ -200,7 +205,7 @@ export async function startCourse(userId: number, courseId: number) {
   if (!db) throw new Error("Database is not available");
   const owned = await db.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
   if (!owned[0]) throw new Error("Course not found or not owned by user");
-  await db.update(courses).set({ status: "active" }).where(eq(courses.id, courseId));
+  await db.update(courses).set({ status: "active", completedPlaceIds: "[]", completedAt: null }).where(eq(courses.id, courseId));
   return { courseId, status: "active" as const };
 }
 
@@ -209,9 +214,25 @@ export async function updateCourseProgress(userId: number, courseId: number, com
   if (!db) throw new Error("Database is not available");
   const owned = await db.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
   if (!owned[0]) throw new Error("Course not found or not owned by user");
-  const normalizedIds = Array.from(new Set(completedPlaceIds.map((placeId) => placeId.trim()).filter(Boolean))).slice(0, 100);
-  await db.update(courses).set({ completedPlaceIds: JSON.stringify(normalizedIds), updatedAt: new Date() }).where(eq(courses.id, courseId));
-  return { courseId, completedPlaceIds: normalizedIds };
+  const items = await db.select({ placeId: courseItems.placeId }).from(courseItems).where(eq(courseItems.courseId, courseId));
+  const allowedIds = new Set(items.map((item) => item.placeId));
+  const normalizedIds = Array.from(new Set(completedPlaceIds.map((placeId) => placeId.trim()).filter((placeId) => allowedIds.has(placeId)))).slice(0, 100);
+  const isCompleted = items.length > 0 && normalizedIds.length === items.length;
+  const completedAt = isCompleted ? new Date() : null;
+  const status = isCompleted ? "completed" : "active";
+  await db.update(courses).set({ completedPlaceIds: JSON.stringify(normalizedIds), completedAt, status, updatedAt: new Date() }).where(eq(courses.id, courseId));
+  return { courseId, completedPlaceIds: normalizedIds, status, completedAt };
+}
+
+export async function updateCourseItemTravelRecord(userId: number, courseId: number, placeId: string, input: { travelNote?: string | null; travelPhotoUrl?: string | null; travelPhotoKey?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const owned = await db.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+  if (!owned[0]) throw new Error("Course not found or not owned by user");
+  const result = await db.update(courseItems).set(input).where(and(eq(courseItems.courseId, courseId), eq(courseItems.placeId, placeId)));
+  if (!result[0]?.affectedRows) throw new Error("Course place was not found");
+  await db.update(courses).set({ updatedAt: new Date() }).where(eq(courses.id, courseId));
+  return { updated: true } as const;
 }
 
 export async function appendPlaceToCourse(userId: number, courseId: number, place: SavedPlaceInput) {
@@ -255,6 +276,7 @@ export async function clonePublicCourse(userId: number, courseId: number) {
       shareImageUrl: source.shareImageUrl,
       photoUrls: source.photoUrls,
       completedPlaceIds: "[]",
+      completedAt: null,
       startDate: source.startDate,
       endDate: source.endDate,
       status: "planned",
@@ -263,7 +285,7 @@ export async function clonePublicCourse(userId: number, courseId: number) {
     });
     const clonedCourseId = Number(result[0].insertId);
     if (sourceItems.length) {
-      await tx.insert(courseItems).values(sourceItems.map(({ id: _id, courseId: _courseId, ...item }) => ({ ...item, courseId: clonedCourseId })));
+      await tx.insert(courseItems).values(sourceItems.map(({ id: _id, courseId: _courseId, travelNote: _travelNote, travelPhotoUrl: _travelPhotoUrl, travelPhotoKey: _travelPhotoKey, ...item }) => ({ ...item, courseId: clonedCourseId, travelNote: null, travelPhotoUrl: null, travelPhotoKey: null })));
     }
     return { courseId: clonedCourseId, sourceCourseId: source.sourceCourseId ?? source.id } as const;
   });
@@ -287,6 +309,8 @@ export async function listSavedCourses(userId: number) {
       coverImage: courses.coverImage,
       shareImageUrl: courses.shareImageUrl,
       photoUrls: courses.photoUrls,
+      completedPlaceIds: courses.completedPlaceIds,
+      completedAt: courses.completedAt,
       startDate: courses.startDate,
       endDate: courses.endDate,
       status: courses.status,

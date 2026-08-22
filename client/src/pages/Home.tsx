@@ -5,8 +5,10 @@ import {
   ArrowLeft,
   ArrowUpDown,
   Bookmark,
+  Camera,
   CarFront,
   Calendar,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock3,
@@ -17,6 +19,7 @@ import {
   Footprints,
   GripVertical,
   Heart,
+  ImagePlus,
   LocateFixed,
   Link2,
   Maximize2,
@@ -24,6 +27,7 @@ import {
   MoreHorizontal,
   Navigation,
   Pencil,
+  PartyPopper,
   Plus,
   Search,
   Share2,
@@ -69,9 +73,9 @@ type Place = {
   website?: string;
 };
 
-type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string; dayNumber?: number; durationMinutes?: number };
+type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string; dayNumber?: number; durationMinutes?: number; placeId?: string; travelNote?: string | null; travelPhotoUrl?: string | null };
 type CourseStatus = "planned" | "active" | "completed";
-type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null; photoUrls?: string | string[] | null; completedPlaceIds?: string | string[] | null };
+type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; completedAt?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null; photoUrls?: string | string[] | null; completedPlaceIds?: string | string[] | null };
 type NavigationOrigin = { id: string; label: string; address: string; lat: number; lng: number };
 type RegionSelection = { label: string; lat: number; lng: number };
 type RecentRegion = RegionSelection & { isFavorite?: boolean };
@@ -580,6 +584,8 @@ export default function Home() {
   const updateCourseMutation = trpc.courses.update.useMutation();
   const startCourseMutation = trpc.courses.start.useMutation();
   const updateCourseProgressMutation = trpc.courses.updateProgress.useMutation();
+  const updateCourseTravelRecordMutation = trpc.courses.updateTravelRecord.useMutation();
+  const uploadCourseTravelPhotoMutation = trpc.courses.uploadTravelPhoto.useMutation();
   const uploadCoursePhotoMutation = trpc.courses.uploadPhoto.useMutation();
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
   const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
@@ -592,6 +598,7 @@ export default function Home() {
   const clonePublicCourseMutation = trpc.courses.clonePublic.useMutation();
   const trpcUtils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("map");
+  const [placeDetailBackScreen, setPlaceDetailBackScreen] = useState<Screen>("map");
   const [selectedTab, setSelectedTab] = useState<Tab>("map");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("전체");
@@ -663,6 +670,11 @@ export default function Home() {
   const [activeCompletedPlaceIds, setActiveCompletedPlaceIds] = useState<string[]>([]);
   const [activeCourseMapMode, setActiveCourseMapMode] = useState<"course" | "all">("course");
   const [activeCourseBackScreen, setActiveCourseBackScreen] = useState<Screen>("home");
+  const [editingTravelRecord, setEditingTravelRecord] = useState<{ placeId: string; placeName: string; note: string; photoUrl: string | null } | null>(null);
+  const [travelRecordPhotoDataUrl, setTravelRecordPhotoDataUrl] = useState<string | null>(null);
+  const [travelRecordPhotoPreview, setTravelRecordPhotoPreview] = useState<string | null>(null);
+  const [shouldRemoveTravelRecordPhoto, setShouldRemoveTravelRecordPhoto] = useState(false);
+  const [isCourseCompleteCelebrationOpen, setIsCourseCompleteCelebrationOpen] = useState(false);
   const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
   const [activeDetailDay, setActiveDetailDay] = useState(1);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
@@ -864,12 +876,13 @@ export default function Home() {
       setLivePlaces((current) => current.map((item) => item.id === place.id ? enriched : item));
     });
   };
-  const openPlace = (place: Place) => {
+  const openPlace = (place: Place, returnScreen: Screen = screen === "active-course" ? "active-course" : "map") => {
     if (isCoursePlaceSearchActive) {
       addPlaceToCourse(place);
       return;
     }
     setGalleryIndex(0);
+    setPlaceDetailBackScreen(returnScreen);
     setSelectedPlace(place);
     setScreen("place-detail");
     hydrateGooglePlaceDetails(place);
@@ -904,6 +917,10 @@ export default function Home() {
     }
   };
   const restoreMapFromPlaceDetail = () => {
+    if (placeDetailBackScreen !== "map") {
+      setScreen(placeDetailBackScreen);
+      return;
+    }
     const snapshot = mapReturnState;
     setScreen("map");
     if (!snapshot) return;
@@ -1094,7 +1111,7 @@ export default function Home() {
   const routeMinutesSaved = Math.max(0, courseTravelMinutes - recommendedTravelMinutes);
   const courseDetailItems = useMemo<CourseItem[]>(() => {
     const detailItems = selectedCourseQuery.data?.items as Array<any> | undefined;
-    if (detailItems?.length) return detailItems.map((item) => ({ name: item.name, time: item.visitTime || "10:00", duration: formatTotalDuration(item.durationMinutes || 60), durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1, cost: item.estimatedCost || 0, image: item.imageUrl || mockPlaces[0].image, address: item.address || undefined }));
+    if (detailItems?.length) return detailItems.map((item) => ({ placeId: item.placeId, name: item.name, time: item.visitTime || "10:00", duration: formatTotalDuration(item.durationMinutes || 60), durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1, cost: item.estimatedCost || 0, image: item.imageUrl || mockPlaces[0].image, address: item.address || undefined, travelNote: item.travelNote || null, travelPhotoUrl: item.travelPhotoUrl || null }));
     return selectedCourse.items.map((item) => ({ ...item, durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1 }));
   }, [selectedCourse.items, selectedCourseQuery.data]);
   const courseDetailPhotoUrls = useMemo(() => parseCoursePhotoUrls((selectedCourseQuery.data as any)?.photoUrls || selectedCourse.photoUrls), [selectedCourse.photoUrls, selectedCourseQuery.data]);
@@ -1304,6 +1321,53 @@ export default function Home() {
     reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("사진 파일을 읽지 못했습니다."));
     reader.readAsDataURL(file);
   });
+  const openTravelRecordEditor = (placeId: string, placeName: string, travelNote?: string | null, travelPhotoUrl?: string | null) => {
+    setEditingTravelRecord({ placeId, placeName, note: travelNote || "", photoUrl: travelPhotoUrl || null });
+    setTravelRecordPhotoDataUrl(null);
+    setTravelRecordPhotoPreview(travelPhotoUrl || null);
+    setShouldRemoveTravelRecordPhoto(false);
+  };
+  const selectTravelRecordPhoto = (file?: File) => {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 6 * 1024 * 1024) {
+      toast.error("JPG, PNG, WebP 형식의 6MB 이하 사진을 선택해 주세요.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : null;
+      if (!dataUrl) return;
+      setTravelRecordPhotoDataUrl(dataUrl);
+      setTravelRecordPhotoPreview(dataUrl);
+      setShouldRemoveTravelRecordPhoto(false);
+    };
+    reader.readAsDataURL(file);
+  };
+  const saveTravelRecord = async () => {
+    if (!editingTravelRecord || !selectedCourseId) {
+      toast.message("저장할 코스 정보를 먼저 확인해 주세요.");
+      return;
+    }
+    try {
+      let uploadedPhoto: { url: string; key: string } | undefined;
+      if (travelRecordPhotoDataUrl) uploadedPhoto = await uploadCourseTravelPhotoMutation.mutateAsync({ courseId: selectedCourseId, placeId: editingTravelRecord.placeId, dataUrl: travelRecordPhotoDataUrl });
+      const input: { courseId: number; placeId: string; travelNote: string; travelPhotoUrl?: string | null; travelPhotoKey?: string | null } = { courseId: selectedCourseId, placeId: editingTravelRecord.placeId, travelNote: editingTravelRecord.note.trim() };
+      if (uploadedPhoto) {
+        input.travelPhotoUrl = uploadedPhoto.url;
+        input.travelPhotoKey = uploadedPhoto.key;
+      } else if (shouldRemoveTravelRecordPhoto) {
+        input.travelPhotoUrl = null;
+        input.travelPhotoKey = null;
+      }
+      await updateCourseTravelRecordMutation.mutateAsync(input);
+      await Promise.all([trpcUtils.courses.get.invalidate({ courseId: selectedCourseId }), trpcUtils.courses.mine.invalidate()]);
+      setEditingTravelRecord(null);
+      toast.success("이 장소의 여행 기록을 저장했습니다.");
+    } catch {
+      toast.error("여행 기록을 저장하지 못했습니다. 다시 시도해 주세요.");
+    }
+  };
+  const renderTravelRecordEditor = () => editingTravelRecord && <div className="route-overlay route-travel-record-overlay" onClick={() => setEditingTravelRecord(null)}><section className="route-travel-record-sheet" aria-label="장소 여행 기록" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-travel-record-heading"><div><span>TRAVEL RECORD</span><h3>{editingTravelRecord.placeName} 기록</h3><p>사진 한 장과 짧은 메모로 지금의 여행을 남겨보세요.</p></div><button aria-label="여행 기록 닫기" onClick={() => setEditingTravelRecord(null)}><X size={17} /></button></div><div className="route-travel-record-photo"><input id="travel-record-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectTravelRecordPhoto(event.target.files?.[0])} /><label htmlFor="travel-record-photo">{travelRecordPhotoPreview ? <img src={travelRecordPhotoPreview} alt="여행 기록 사진 미리보기" /> : <><ImagePlus size={24} /><span>사진 추가</span></>}</label>{travelRecordPhotoPreview && <button type="button" onClick={() => { setTravelRecordPhotoDataUrl(null); setTravelRecordPhotoPreview(null); setShouldRemoveTravelRecordPhoto(true); }}>사진 삭제</button>}</div><label className="route-travel-record-note">한 줄 메모<textarea value={editingTravelRecord.note} maxLength={2000} onChange={(event) => setEditingTravelRecord((current) => current ? { ...current, note: event.target.value } : current)} placeholder="예) 창가 자리가 좋아서 여유롭게 쉬었어요." /></label><button className="route-travel-record-save" onClick={() => void saveTravelRecord()} disabled={updateCourseTravelRecordMutation.isPending || uploadCourseTravelPhotoMutation.isPending}><Camera size={16} /> {uploadCourseTravelPhotoMutation.isPending ? "사진 올리는 중" : "기록 저장"}</button></section></div>;
   const uploadCoursePhotoTask = async (task: CoursePhotoUploadTask) => {
     setCoursePhotoUploads((current) => current.map((item) => item.id === task.id ? { ...item, status: "uploading", error: undefined } : item));
     try {
@@ -2322,6 +2386,21 @@ export default function Home() {
   };
 
   const renderCourseDetail = () => <div className="route-screen route-course-detail"><ScreenHeader title={sharedCourseTitle} onBack={() => setScreen(screen === "public-course-detail" ? "friends" : "my-courses")} right={<button aria-label="코스 공유" onClick={() => setIsCourseShareOpen(true)}><Share2 size={17} /></button>} /><div className="route-course-cover"><img src={selectedCourse.image} alt="" /><div><span>{courseStatusLabel[selectedCourse.status || "planned"]} · {sharedCourseDateRange}</span><h2>{sharedCourseTitle}</h2><p>by {(selectedCourseQuery.data as any)?.authorName || selectedCourse.author}</p></div></div><div className="route-course-summary"><span><Heart size={14} /> {selectedCourse.likes}</span><span><MapPin size={14} /> 장소 {courseDetailItems.length}곳</span><span><Clock3 size={14} /> 총 {formatTotalDuration(courseDetailItems.reduce((total, item) => total + (item.durationMinutes || 60), 0))}</span></div><section className="route-course-detail-share-actions" aria-label="코스 빠른 공유"><button aria-label="Instagram Story 이미지 다운로드" onClick={exportCourseImage}><span className="instagram">◎</span><span><strong>Instagram Story</strong><small>9:16 이미지 다운로드</small></span><Download size={15} /></button><button aria-label="X에 공유" onClick={() => shareCourseToSocial("twitter")} disabled={!isSelectedCoursePublic}><span className="x">X</span><span><strong>X에 공유</strong><small>{isSelectedCoursePublic ? "링크와 함께 게시" : "공개 코스에서 사용"}</small></span><ExternalLink size={14} /></button></section>{(selectedCourseQuery.data as any)?.sourceCourseId && <div className="route-course-origin-note"><Bookmark size={14} /> 다른 여행자의 공개 코스에서 복제한 내 코스입니다.</div>}{renderScheduleWarnings(selectedCourseScheduleWarnings)}<CourseRouteMap key={`course-day-route-${activeDetailDay}`} stops={activeDetailStops} /><div className="route-day-map-context"><Navigation size={14} /><span>Day {activeDetailDay} 이동 경로만 지도에 강조하고 있어요.</span></div>{activeDetailRouteWarnings.length > 0 && <section className="route-route-efficiency-warning" aria-label="동선 효율 경고"><AlertTriangle size={16} /><div><strong>동선을 한 번 확인해보세요</strong><p>{activeDetailRouteWarnings[0].message}</p></div></section>}<div className="route-detail-timeline"><div className="route-day-timeline-heading"><div><span>ITINERARY</span><h3>일차별 일정</h3></div><strong>{formatTotalDuration(activeDetailDuration)}</strong></div><div className="route-day-tabs" role="tablist" aria-label="일차별 일정">{detailDayNumbers.map((day) => <button key={day} role="tab" aria-selected={activeDetailDay === day} className={activeDetailDay === day ? "active" : ""} onClick={() => setActiveDetailDay(day)}>Day {day}<small>{formatTotalDuration(courseDetailItems.filter((item) => (item.dayNumber || 1) === day).reduce((total, item) => total + (item.durationMinutes || 60), 0))}</small></button>)}</div>{activeDetailItems.map((item, index) => <Fragment key={`${item.name}-${index}`}><button onClick={() => { const place = mockPlaces.find((candidate) => candidate.name.includes(item.name) || item.name.includes(candidate.name)); if (place) openPlace(place); }}><time>{item.time}<small>도착</small></time><b>{index + 1}</b><img src={item.image} alt="" /><span><strong>{item.name}</strong><small>{formatTotalDuration(item.durationMinutes || 60)} · {item.cost.toLocaleString()}원</small></span></button>{activeDetailSegments[index] && <div className="route-timeline-travel" aria-label={`${item.name}에서 다음 장소까지 예상 이동시간`}><Navigation size={12} /><span>{formatMinutes(activeDetailSegments[index].minutes)} 이동</span><small>{formatDistance(activeDetailSegments[index].distanceMeters)} · 다음 장소</small></div>}</Fragment>)}</div><div className="route-bottom-action single"><button onClick={() => screen === "public-course-detail" ? void cloneCurrentPublicCourse() : setScreen("edit-course")} disabled={screen === "public-course-detail" && clonePublicCourseMutation.isPending}>{screen === "public-course-detail" ? "내 코스로 복제" : "코스 수정"}</button></div></div>;
+  const renderCourseCompleteCelebration = () => {
+    if (!isCourseCompleteCelebrationOpen) return null;
+    const completedAt = (selectedCourse as any).completedAt ? new Date((selectedCourse as any).completedAt) : new Date();
+    const recordedPhotoCount = courseDetailItems.filter((item: any) => Boolean(item.travelPhotoUrl)).length;
+    const recordedMemoCount = courseDetailItems.filter((item: any) => Boolean(item.travelNote?.trim())).length;
+    return <div className="route-overlay route-course-complete-overlay" role="dialog" aria-modal="true" aria-label="코스 완료 축하" onClick={() => setIsCourseCompleteCelebrationOpen(false)}><section className="route-course-complete-card" onClick={(event) => event.stopPropagation()}><div className="route-course-complete-confetti" aria-hidden="true"><i /><i /><i /><i /><i /></div><div className="route-course-complete-icon"><PartyPopper size={28} /><CheckCircle2 size={22} /></div><span>ROUTE COMPLETE</span><h2>{selectedCourse.title}<br />여행을 완주했어요.</h2><p>{completedAt.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })}에 모든 장소를 방문했습니다.</p><div className="route-course-complete-summary"><div><strong>{courseDetailItems.length}</strong><small>방문 장소</small></div><div><strong>{recordedPhotoCount}</strong><small>남긴 사진</small></div><div><strong>{recordedMemoCount}</strong><small>여행 메모</small></div></div><div className="route-course-complete-actions"><button className="secondary" onClick={() => { setIsCourseCompleteCelebrationOpen(false); setScreen("course-detail"); }}>코스 상세 보기</button><button onClick={() => { setIsCourseCompleteCelebrationOpen(false); setSelectedTab("home"); setScreen("home"); }}>홈으로</button></div></section></div>;
+  };
+
+  const renderActiveTravelRecords = () => {
+    const recordedItems = courseDetailItems.filter((item: any) => Boolean(item.travelNote?.trim() || item.travelPhotoUrl));
+    const recordTarget = courseDetailItems.find((item: any) => activeCompletedPlaceIds.includes(item.placeId)) || courseDetailItems[0];
+    if (!recordTarget) return null;
+    return <section className="route-active-travel-records" aria-label="여행 기록"><div className="route-active-travel-records-heading"><div><span>TRAVEL NOTES</span><h2>남긴 여행 기록</h2></div><small>{recordedItems.length ? "사진 또는 메모를 눌러 수정" : "첫 기록을 남겨보세요"}</small></div>{recordedItems.length ? <div>{recordedItems.map((item: any, index) => { const placeId = item.placeId || mockPlaces.find((place: Place) => place.name === item.name)?.id; if (!placeId) return null; return <button key={`${placeId}-${index}`} onClick={() => openTravelRecordEditor(placeId, item.name, item.travelNote, item.travelPhotoUrl)}>{item.travelPhotoUrl ? <img src={item.travelPhotoUrl} alt={`${item.name} 여행 기록`} /> : <span className="route-active-travel-record-placeholder"><Camera size={15} /></span>}<span><strong>{item.name}</strong><small>{item.travelNote || "사진으로 남긴 여행 기록"}</small></span><Pencil size={14} /></button>; })}</div> : <button className="route-active-record-create" onClick={() => openTravelRecordEditor((recordTarget as any).placeId, recordTarget.name)}><span><Camera size={17} /></span><div><strong>{recordTarget.name} 기록 남기기</strong><small>사진 한 장과 짧은 메모를 저장해 보세요.</small></div><ChevronRight size={16} /></button>}</section>;
+  };
+
   const renderActiveCourse = () => {
     const progressItems = courseDetailItems.length ? courseDetailItems : coursePlaces.map((place) => ({ name: place.name, time: courseTimes[place.id] || "10:00", duration: formatTotalDuration(Number(courseDurations[place.id]) || 60), durationMinutes: Number(courseDurations[place.id]) || 60, dayNumber: courseItemDays[place.id] || 1, cost: Number(courseCosts[place.id]) || 0, image: place.image, address: place.address }));
     const progressPlaces = progressItems.map((item, index) => {
@@ -2344,9 +2423,16 @@ export default function Home() {
         return;
       }
       try {
-        await updateCourseProgressMutation.mutateAsync({ courseId: selectedCourseId, completedPlaceIds });
-        await trpcUtils.courses.mine.invalidate();
-        toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+        const progress = await updateCourseProgressMutation.mutateAsync({ courseId: selectedCourseId, completedPlaceIds });
+        setActiveCompletedPlaceIds(progress.completedPlaceIds);
+        setSelectedCourse((current) => ({ ...current, status: progress.status, completedAt: progress.completedAt } as Course));
+        await Promise.all([trpcUtils.courses.mine.invalidate(), trpcUtils.courses.get.invalidate({ courseId: selectedCourseId })]);
+        if (progress.status === "completed") {
+          setIsCourseCompleteCelebrationOpen(true);
+          toast.success("모든 장소를 방문했어요. 코스가 완료되었습니다.");
+        } else {
+          toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+        }
       } catch {
         setActiveCompletedPlaceIds(previousCompletedIds);
         toast.error("방문 완료 상태를 저장하지 못했습니다. 다시 시도해 주세요.");
@@ -2421,7 +2507,7 @@ export default function Home() {
   else if (screen === "saved-courses") content = renderSavedCourses();
   else if (screen === "data-guide") content = renderDataGuide();
   else if (screen === "mypage") content = renderMyPage();
-  else if (screen === "active-course") content = renderActiveCourse();
+  else if (screen === "active-course") content = <>{renderActiveCourse()}{renderActiveTravelRecords()}{renderTravelRecordEditor()}{renderCourseCompleteCelebration()}</>;
   else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
   const homeActiveCourse = ownedCourses.find((course) => course.status === "active");
