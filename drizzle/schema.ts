@@ -77,6 +77,7 @@ export const courses = mysqlTable(
     description: text("description"),
     coverImage: text("coverImage"),
     shareImageUrl: text("shareImageUrl"),
+    photoUrls: text("photoUrls"),
     startDate: timestamp("startDate"),
     endDate: timestamp("endDate"),
     status: mysqlEnum("status", ["planned", "active", "completed"]).default("planned").notNull(),

@@ -88,6 +88,25 @@ describe("Route course procedures", () => {
     await expect(caller.courses.create({ title: "기간 테스트", startDate: "2026-09-03", endDate: "2026-09-01", items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects more than eight course photo URLs before hitting the database", async () => {
+    const caller = appRouter.createCaller({
+      ...publicContext(),
+      user: {
+        id: 1,
+        openId: "route-test-user",
+        name: "Route Test",
+        email: "route@test.local",
+        loginMethod: "test",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+    });
+    const photos = Array.from({ length: 9 }, (_, index) => `https://images.example.com/course-${index}.jpg`);
+    await expect(caller.courses.create({ title: "사진 많은 코스", photoUrls: photos, items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects invalid social and personal-place inputs before hitting the database", async () => {
     const caller = appRouter.createCaller({
       ...publicContext(),

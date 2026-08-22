@@ -71,7 +71,7 @@ type Place = {
 
 type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string; dayNumber?: number; durationMinutes?: number };
 type CourseStatus = "planned" | "active" | "completed";
-type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null };
+type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null; photoUrls?: string | string[] | null };
 type NavigationOrigin = { id: string; label: string; address: string; lat: number; lng: number };
 type RegionSelection = { label: string; lat: number; lng: number };
 type RecentRegion = RegionSelection & { isFavorite?: boolean };
@@ -104,6 +104,17 @@ const TravelModeContext = createContext<TravelMode>("driving");
 
 function getPlacePhotos(place: Place) {
   return place.photos?.length ? place.photos : [place.image];
+}
+
+function parseCoursePhotoUrls(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 8);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
 }
 
 function getGooglePlaceOpenNow(openingHours: unknown): boolean | undefined {
@@ -536,6 +547,7 @@ export default function Home() {
   const createCourseMutation = trpc.courses.create.useMutation();
   const appendPlaceMutation = trpc.courses.appendPlace.useMutation();
   const updateCourseMutation = trpc.courses.update.useMutation();
+  const uploadCoursePhotoMutation = trpc.courses.uploadPhoto.useMutation();
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
   const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
   const myCoursesQuery = trpc.courses.mine.useQuery(undefined, { enabled: isAuthenticated });
@@ -606,6 +618,7 @@ export default function Home() {
   const [courseStatus, setCourseStatus] = useState<CourseStatus>("planned");
   const [isCoursePublic, setIsCoursePublic] = useState(false);
   const [courseShareImageUrl, setCourseShareImageUrl] = useState("");
+  const [coursePhotoUrls, setCoursePhotoUrls] = useState<string[]>([]);
   const [coursePlaces, setCoursePlaces] = useState<Place[]>(mockPlaces);
   const [courseTimes, setCourseTimes] = useState<Record<string, string>>({ p1: "14:00", p2: "15:40", p3: "17:00", p4: "19:00" });
   const [courseCosts, setCourseCosts] = useState<Record<string, string>>({ p1: "10000", p2: "15000", p3: "50000", p4: "0" });
@@ -1019,6 +1032,7 @@ export default function Home() {
     if (detailItems?.length) return detailItems.map((item) => ({ name: item.name, time: item.visitTime || "10:00", duration: formatTotalDuration(item.durationMinutes || 60), durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1, cost: item.estimatedCost || 0, image: item.imageUrl || mockPlaces[0].image, address: item.address || undefined }));
     return selectedCourse.items.map((item) => ({ ...item, durationMinutes: item.durationMinutes || 60, dayNumber: item.dayNumber || 1 }));
   }, [selectedCourse.items, selectedCourseQuery.data]);
+  const courseDetailPhotoUrls = useMemo(() => parseCoursePhotoUrls((selectedCourseQuery.data as any)?.photoUrls || selectedCourse.photoUrls), [selectedCourse.photoUrls, selectedCourseQuery.data]);
   const detailDayNumbers = useMemo(() => Array.from(new Set(courseDetailItems.map((item) => item.dayNumber || 1))).sort((a, b) => a - b), [courseDetailItems]);
   const activeDetailItems = useMemo(() => courseDetailItems.filter((item) => (item.dayNumber || 1) === activeDetailDay), [activeDetailDay, courseDetailItems]);
   const activeDetailDuration = activeDetailItems.reduce((total, item) => total + (item.durationMinutes || 60), 0);
@@ -1116,7 +1130,9 @@ export default function Home() {
     setCourseEndDate(toDateInputValue(detail.endDate));
     setCourseStatus(detail.status || "planned");
     setIsCoursePublic(Boolean(detail.isPublic));
-    setCourseShareImageUrl(detail.shareImageUrl || detail.coverImage || normalizedPlaces[0]?.image || "");
+    const persistedPhotos = parseCoursePhotoUrls(detail.photoUrls);
+    setCoursePhotoUrls(persistedPhotos);
+    setCourseShareImageUrl(detail.shareImageUrl || detail.coverImage || persistedPhotos[0] || normalizedPlaces[0]?.image || "");
     setCourseTimes(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.visitTime || "10:00"])));
     setCourseCosts(Object.fromEntries(detail.items.map((item: any) => [item.placeId, String(item.estimatedCost || 0)])));
     setCourseItemDays(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.dayNumber || 1])));
@@ -1199,6 +1215,31 @@ export default function Home() {
       setSavedPlacePhotoDataUrl(dataUrl);
       setSavedPlacePhotoPreview(dataUrl);
       setShouldRemoveSavedPlacePhoto(false);
+    };
+    reader.readAsDataURL(file);
+  };
+  const selectCoursePhoto = (file?: File) => {
+    if (!file) return;
+    if (coursePhotoUrls.length >= 8) {
+      toast.error("코스 사진은 최대 8장까지 추가할 수 있어요.");
+      return;
+    }
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 6 * 1024 * 1024) {
+      toast.error("JPG, PNG, WebP 형식의 6MB 이하 사진을 선택해 주세요.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : null;
+      if (!dataUrl) return;
+      try {
+        const uploaded = await uploadCoursePhotoMutation.mutateAsync({ dataUrl });
+        setCoursePhotoUrls((current) => current.includes(uploaded.url) ? current : [...current, uploaded.url].slice(0, 8));
+        setCourseShareImageUrl(uploaded.url);
+        toast.success("코스 사진을 추가하고 대표 사진으로 선택했습니다.");
+      } catch {
+        toast.error("코스 사진을 추가하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -1357,8 +1398,8 @@ export default function Home() {
   };
   const saveCourse = async () => {
     try {
-      const preferredShareImage = courseShareImageUrl || coursePlaces[0]?.image;
-      const courseId = await createCourseMutation.mutateAsync({ title: courseTitle, region: "서울", coverImage: preferredShareImage, shareImageUrl: preferredShareImage, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, isPublic: isCoursePublic, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      const preferredShareImage = courseShareImageUrl || coursePhotoUrls[0] || coursePlaces[0]?.image;
+      const courseId = await createCourseMutation.mutateAsync({ title: courseTitle, region: "서울", coverImage: preferredShareImage, shareImageUrl: preferredShareImage, photoUrls: coursePhotoUrls, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, isPublic: isCoursePublic, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
       await Promise.all([trpcUtils.courses.mine.invalidate(), trpcUtils.courses.public.invalidate(), trpcUtils.courses.followingPublic.invalidate()]);
       if (isCoursePublic) {
         setSelectedCourse({ id: String(courseId), title: courseTitle, region: "서울", author: user?.name || "나의 Route", image: preferredShareImage || mockPlaces[0].image, shareImageUrl: preferredShareImage, likes: 0, days: 1, items: [], startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, isPublic: true });
@@ -1377,8 +1418,8 @@ export default function Home() {
       return;
     }
     try {
-      const preferredShareImage = courseShareImageUrl || coursePlaces[0]?.image;
-      await updateCourseMutation.mutateAsync({ courseId: numericCourseId, title: courseTitle, region: selectedCourse.region, coverImage: preferredShareImage, shareImageUrl: preferredShareImage, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, isPublic: isCoursePublic, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
+      const preferredShareImage = courseShareImageUrl || coursePhotoUrls[0] || coursePlaces[0]?.image;
+      await updateCourseMutation.mutateAsync({ courseId: numericCourseId, title: courseTitle, region: selectedCourse.region, coverImage: preferredShareImage, shareImageUrl: preferredShareImage, photoUrls: coursePhotoUrls, startDate: courseStartDate || null, endDate: courseEndDate || null, status: courseStatus, isPublic: isCoursePublic, items: coursePlaces.map((place, index) => ({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours, orderIndex: index, dayNumber: courseItemDays[place.id] || 1, visitTime: courseTimes[place.id] || "10:00", durationMinutes: Number(courseDurations[place.id]) || 60, estimatedCost: Number(courseCosts[place.id]) || 0, note: courseMemos[place.id] })) });
       await Promise.all([trpcUtils.courses.mine.invalidate(), trpcUtils.courses.public.invalidate(), trpcUtils.courses.followingPublic.invalidate()]);
       toast.success("코스 수정 내용을 저장했습니다."); setScreen("my-courses"); setSelectedTab("courses");
     } catch { toast.error("코스 수정 내용을 저장하지 못했습니다."); }
@@ -1977,22 +2018,22 @@ export default function Home() {
 
   const renderCourseVisibilityControl = () => <><fieldset className="route-course-visibility" aria-label="공개 범위"><legend>공개 범위</legend><button type="button" className={!isCoursePublic ? "active" : ""} onClick={() => setIsCoursePublic(false)}><strong>비공개</strong><small>나만 볼 수 있어요</small></button><button type="button" className={isCoursePublic ? "active" : ""} onClick={() => setIsCoursePublic(true)}><strong>전체 공개</strong><small>다른 Route 사용자가 보고 링크로 열 수 있어요</small></button></fieldset>{screen === "course-create" && renderCourseShareImagePicker()}</>;
   const renderCourseShareImagePicker = () => {
-    if (!coursePlaces.length) return null;
-    const selectedImage = courseShareImageUrl || coursePlaces[0]?.image;
+    const photoOptions = Array.from(new Set([...coursePhotoUrls, ...coursePlaces.map((place) => place.image)])).slice(0, 12);
+    if (!photoOptions.length) return null;
+    const selectedImage = courseShareImageUrl || photoOptions[0];
     return <section className="route-share-image-picker" aria-label="공유 미리보기 대표 사진">
-      <div><span>SHARE PREVIEW</span><h3>공유 미리보기 대표 사진</h3><p>선택한 사진을 공개 코스 카드와 공유 링크 이미지에 우선 표시해요.</p></div>
-      <div className="route-share-image-options">{coursePlaces.map((place, index) => {
-        const selected = selectedImage === place.image;
-        return <button key={place.id} type="button" aria-label={`${place.name} 공유 미리보기 대표 사진`} aria-pressed={selected} className={selected ? "active" : ""} onClick={() => setCourseShareImageUrl(place.image)}>
-          <img src={place.image} alt="" />
-          <span><strong>{place.name}</strong><small>{index === 0 ? "기본 우선순위" : "이 사진으로 변경"}</small></span>
-          {selected && <b>선택됨</b>}
-        </button>;
+      <div><span>COURSE PHOTOS</span><h3>코스 사진과 대표 사진</h3><p>직접 올린 사진은 코스에 저장되고, 선택한 사진은 카드와 공유 링크에 표시돼요.</p></div>
+      <div className="route-course-photo-upload-row"><label className="route-course-photo-upload"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectCoursePhoto(event.target.files?.[0])} disabled={uploadCoursePhotoMutation.isPending || coursePhotoUrls.length >= 8} /><Plus size={15} /> {uploadCoursePhotoMutation.isPending ? "사진 추가 중" : `사진 추가 (${coursePhotoUrls.length}/8)`}</label><small>JPG, PNG, WebP · 최대 6MB</small></div>
+      <div className="route-share-image-options">{photoOptions.map((image, index) => {
+        const selected = selectedImage === image;
+        const uploadedIndex = coursePhotoUrls.indexOf(image);
+        const sourcePlace = coursePlaces.find((place) => place.image === image);
+        return <article key={`${image}-${index}`} className={selected ? "active" : ""}><button type="button" aria-label={`${sourcePlace?.name || `코스 사진 ${index + 1}`} 공유 미리보기 대표 사진`} aria-pressed={selected} onClick={() => setCourseShareImageUrl(image)}><img src={image} alt="" /><span><strong>{sourcePlace?.name || `내 코스 사진 ${uploadedIndex + 1}`}</strong><small>{uploadedIndex >= 0 ? "직접 추가한 사진" : "장소 기본 사진"}</small></span>{selected && <b>대표</b>}</button>{uploadedIndex >= 0 && <button className="route-course-photo-remove" aria-label={`코스 사진 ${uploadedIndex + 1} 삭제`} onClick={() => setCoursePhotoUrls((current) => { const next = current.filter((url) => url !== image); if (courseShareImageUrl === image) setCourseShareImageUrl(next[0] || coursePlaces[0]?.image || ""); return next; })}><X size={14} /></button>}</article>;
       })}</div>
     </section>;
   };
 
-  const renderMyCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="내 코스" onBack={() => setTab("map")} right={<button className="route-header-add" onClick={() => { setCourseStep(1); setIsCoursePublic(false); setCourseShareImageUrl(""); setScreen("course-create"); }}>+ 새 코스</button>} /><div className="route-list-tabs"><button className="active">내 코스</button><button>저장 코스</button></div><div className="route-course-list">{courseList.length ? courseList.map((course) => <div className="route-large-course-card" key={course.id}><button className="route-course-card-main" onClick={() => { setSelectedCourse(course); setScreen("course-detail"); }}><img src={course.image} alt="" /><span><em className={`route-course-status ${course.status || "planned"}`}>{courseStatusLabel[course.status || "planned"]}</em><strong>{course.title}</strong><small>{formatCourseDateRange(course.startDate, course.endDate)} · 장소 {course.items.length}곳</small></span><ChevronRight size={16} /></button>{hasDbCourses && <button className="route-course-edit-button" aria-label="코스 수정" onClick={() => { setSelectedCourse(course); setCourseTitle(course.title); setCourseStartDate(toDateInputValue(course.startDate)); setCourseEndDate(toDateInputValue(course.endDate)); setCourseStatus(course.status || "planned"); setIsCoursePublic(Boolean((course as any).isPublic)); setCourseShareImageUrl(course.shareImageUrl || course.image); setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("edit-course"); }}><Pencil size={15} /></button>}</div>) : <div className="route-empty"><Calendar size={22} /><strong>저장된 내 코스가 없습니다</strong><span>새 코스를 만들어 여행 일정을 기록해보세요.</span></div>}</div></div>;
+  const renderMyCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="내 코스" onBack={() => setTab("map")} right={<button className="route-header-add" onClick={() => { setCourseStep(1); setIsCoursePublic(false); setCourseShareImageUrl(""); setCoursePhotoUrls([]); setScreen("course-create"); }}>+ 새 코스</button>} /><div className="route-list-tabs"><button className="active">내 코스</button><button>저장 코스</button></div><div className="route-course-list">{courseList.length ? courseList.map((course) => <div className="route-large-course-card" key={course.id}><button className="route-course-card-main" onClick={() => { setSelectedCourse(course); setScreen("course-detail"); }}><img src={course.image} alt="" /><span><em className={`route-course-status ${course.status || "planned"}`}>{courseStatusLabel[course.status || "planned"]}</em><strong>{course.title}</strong><small>{formatCourseDateRange(course.startDate, course.endDate)} · 장소 {course.items.length}곳</small></span><ChevronRight size={16} /></button>{hasDbCourses && <button className="route-course-edit-button" aria-label="코스 수정" onClick={() => { setSelectedCourse(course); setCourseTitle(course.title); setCourseStartDate(toDateInputValue(course.startDate)); setCourseEndDate(toDateInputValue(course.endDate)); setCourseStatus(course.status || "planned"); setIsCoursePublic(Boolean((course as any).isPublic)); setCourseShareImageUrl(course.shareImageUrl || course.image); setCoursePhotoUrls(parseCoursePhotoUrls(course.photoUrls)); setCoursePlaces(mockPlaces); setCourseStep(1); setScreen("edit-course"); }}><Pencil size={15} /></button>}</div>) : <div className="route-empty"><Calendar size={22} /><strong>저장된 내 코스가 없습니다</strong><span>새 코스를 만들어 여행 일정을 기록해보세요.</span></div>}</div></div>;
 
   const renderEditCourse = () => <div className="route-screen route-course-create"><ScreenHeader title="내 버전 코스" onBack={() => setScreen("my-courses")} right={<span>수정</span>} /><div className="route-create-step"><h2>코스 정보를 수정하세요</h2><p>여행 기간·상태와 장소별 Day, 체류시간, 방문 순서를 관리할 수 있습니다.</p><label className="route-edit-label">코스 이름<Input value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} /></label><div className="route-course-lifecycle-fields"><label>시작일<input type="date" value={courseStartDate} onChange={(event) => setCourseStartDate(event.target.value)} /></label><label>종료일<input type="date" value={courseEndDate} min={courseStartDate || undefined} onChange={(event) => setCourseEndDate(event.target.value)} /></label><label>여행 상태<select value={courseStatus} onChange={(event) => setCourseStatus(event.target.value as CourseStatus)}><option value="planned">예정</option><option value="active">진행 중</option><option value="completed">완료</option></select></label></div>{renderCourseVisibilityControl()}{renderCourseShareImagePicker()}{renderDurationSummary()}{renderScheduleWarnings()}<div className="route-edit-place-list"><h3>일정 장소 {coursePlaces.length}곳</h3>{coursePlaces.map((place, index) => <div className="route-edit-place-block" key={place.id}><div className="route-edit-place-row"><b>{index + 1}</b><img src={place.image} alt="" /><span><strong>{place.name}</strong><small>{place.address}</small></span><div className="route-edit-place-actions"><button disabled={index === 0} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button disabled={index === coursePlaces.length - 1} onClick={() => setCoursePlaces((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button></div></div><div className="route-edit-fields">{renderPlanningFields(place)}<label>방문 시간<input type="time" value={courseTimes[place.id] || "10:00"} onChange={(event) => setCourseTimes((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label>예상 비용<input type="number" value={courseCosts[place.id] || "0"} onChange={(event) => setCourseCosts((current) => ({ ...current, [place.id]: event.target.value }))} /></label><label className="memo">메모<textarea value={courseMemos[place.id] || ""} onChange={(event) => setCourseMemos((current) => ({ ...current, [place.id]: event.target.value }))} placeholder="이 장소에 대한 메모" /></label></div></div>)}</div></div><div className="route-bottom-action"><button className="secondary" onClick={() => setScreen("my-courses")}>취소</button><button onClick={() => void saveEditedCourse()} disabled={updateCourseMutation.isPending}>저장하기</button></div></div>;
 

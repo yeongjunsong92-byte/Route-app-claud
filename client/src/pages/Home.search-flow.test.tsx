@@ -52,7 +52,7 @@ vi.mock("@/lib/trpc", () => {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, public: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
@@ -347,7 +347,7 @@ describe("home place search flow", () => {
       const recommendationRows = screen.getAllByRole("group", { name: /장소 작업/ });
       expect(recommendationRows.map((row) => row.getAttribute("aria-label"))).toEqual(["가까운 카페 장소 작업", "조금 먼 카페 장소 작업"]);
       expect(screen.getAllByText(/리뷰 235/).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/09:00–20:00/).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/09:00–20:00/)).toBeNull();
       expect(within(screen.getByRole("group", { name: "조금 먼 카페 장소 작업" })).queryByText(/영업 중/)).toBeNull();
       expect(screen.getByRole("tablist", { name: "주변 장소 카테고리" })).toBeTruthy();
       await user.click(screen.getByRole("tab", { name: "여행지" }));
@@ -818,6 +818,20 @@ describe("home place search flow", () => {
     expect(open).toHaveBeenCalledWith(expect.stringContaining("twitter.com/intent/tweet"), "_blank", "noopener,noreferrer");
     expect(open).toHaveBeenCalledWith(expect.stringContaining(encodeURIComponent("/share/course/201")), "_blank", "noopener,noreferrer");
     expect(open).toHaveBeenCalledWith(expect.stringContaining("facebook.com/sharer/sharer.php"), "_blank", "noopener,noreferrer");
+  });
+
+  it("shows course photo upload and representative-photo controls in course edit", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getAllByRole("button", { name: /내 코스/ })[0]);
+    await user.click(screen.getByRole("button", { name: "코스 수정" }));
+
+    expect(screen.getByRole("region", { name: "공유 미리보기 대표 사진" })).toBeTruthy();
+    expect(screen.getByText("코스 사진과 대표 사진")).toBeTruthy();
+    expect(screen.getByText("사진 추가 (0/8)")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "성수 식당 공유 미리보기 대표 사진" })).toBeTruthy();
   });
 
   it("shows the first-map tutorial, stores completion, and lets users reopen it from my page", async () => {

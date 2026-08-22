@@ -115,6 +115,7 @@ export type CourseInput = {
   description?: string;
   coverImage?: string;
   shareImageUrl?: string;
+  photoUrls?: string[];
   startDate?: string | null;
   endDate?: string | null;
   status?: "planned" | "active" | "completed";
@@ -130,7 +131,7 @@ export async function createCourse(userId: number, input: CourseInput) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.transaction(async (tx) => {
-    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false });
+    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false });
     const courseId = Number(result[0].insertId);
     if (input.items.length > 0) {
       await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
@@ -151,7 +152,7 @@ export async function listPublicCourses() {
   return db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -167,7 +168,7 @@ export async function getCourseDetails(courseId: number, viewerId?: number) {
   const course = (await db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -187,7 +188,7 @@ export async function updateCourse(userId: number, courseId: number, input: Cour
   return db.transaction(async (tx) => {
     const owned = await tx.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
     if (!owned[0]) throw new Error("Course not found or not owned by user");
-    await tx.update(courses).set({ title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false }).where(eq(courses.id, courseId));
+    await tx.update(courses).set({ title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false }).where(eq(courses.id, courseId));
     await tx.delete(courseItems).where(eq(courseItems.courseId, courseId));
     if (input.items.length > 0) await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
     return courseId;
@@ -233,6 +234,7 @@ export async function clonePublicCourse(userId: number, courseId: number) {
       description: source.description,
       coverImage: source.coverImage,
       shareImageUrl: source.shareImageUrl,
+      photoUrls: source.photoUrls,
       startDate: source.startDate,
       endDate: source.endDate,
       status: "planned",
@@ -264,6 +266,7 @@ export async function listSavedCourses(userId: number) {
       description: courses.description,
       coverImage: courses.coverImage,
       shareImageUrl: courses.shareImageUrl,
+      photoUrls: courses.photoUrls,
       startDate: courses.startDate,
       endDate: courses.endDate,
       status: courses.status,

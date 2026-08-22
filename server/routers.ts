@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -51,6 +52,7 @@ const courseLifecycleInput = {
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   status: z.enum(["planned", "active", "completed"]).optional(),
 };
+const coursePhotoUrlsInput = z.array(z.string().url()).max(8).optional();
 
 const hasValidCourseDates = (input: { startDate?: string | null; endDate?: string | null }) => !input.startDate || !input.endDate || input.startDate <= input.endDate;
 
@@ -121,6 +123,7 @@ export const appRouter = router({
       description: z.string().optional(),
       coverImage: z.string().url().optional(),
       shareImageUrl: z.string().url().optional(),
+      photoUrls: coursePhotoUrlsInput,
       ...courseLifecycleInput,
       isPublic: z.boolean().optional(),
       items: z.array(courseItemInput),
@@ -132,6 +135,7 @@ export const appRouter = router({
       description: z.string().optional(),
       coverImage: z.string().url().optional(),
       shareImageUrl: z.string().url().optional(),
+      photoUrls: coursePhotoUrlsInput,
       ...courseLifecycleInput,
       isPublic: z.boolean().optional(),
       items: z.array(courseItemInput),
@@ -140,6 +144,13 @@ export const appRouter = router({
       courseId: z.number().int().positive(),
       place: placeInput,
     })).mutation(({ ctx, input }) => appendPlaceToCourse(ctx.user.id, input.courseId, input.place)),
+    uploadPhoto: protectedProcedure.input(z.object({
+      dataUrl: z.string().min(32).max(8_500_000),
+    })).mutation(async ({ ctx, input }) => {
+      const { bytes, contentType, extension } = parseImageDataUrl(input.dataUrl);
+      const uploaded = await storagePut(`route/users/${ctx.user.id}/course-photos/${randomUUID()}.${extension}`, bytes, contentType);
+      return { url: uploaded.url, key: uploaded.key } as const;
+    }),
     save: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => saveCourse(ctx.user.id, input.courseId)),
     clonePublic: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => clonePublicCourse(ctx.user.id, input.courseId)),
   }),
