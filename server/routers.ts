@@ -20,6 +20,7 @@ import {
   listSavedPlaces,
   listUsersForDiscovery,
   saveCourse,
+  startCourse,
   toggleFollow,
   toggleSavedPlace,
   updateSavedPlaceRecord,
@@ -140,6 +141,7 @@ export const appRouter = router({
       isPublic: z.boolean().optional(),
       items: z.array(courseItemInput),
     }).refine(hasValidCourseDates, { message: "종료일은 시작일보다 빠를 수 없습니다.", path: ["endDate"] })).mutation(({ ctx, input }) => updateCourse(ctx.user.id, input.courseId, input)),
+    start: protectedProcedure.input(z.object({ courseId: z.number().int().positive() })).mutation(({ ctx, input }) => startCourse(ctx.user.id, input.courseId)),
     appendPlace: protectedProcedure.input(z.object({
       courseId: z.number().int().positive(),
       place: placeInput,

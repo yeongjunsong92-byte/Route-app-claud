@@ -195,6 +195,15 @@ export async function updateCourse(userId: number, courseId: number, input: Cour
   });
 }
 
+export async function startCourse(userId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const owned = await db.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+  if (!owned[0]) throw new Error("Course not found or not owned by user");
+  await db.update(courses).set({ status: "active" }).where(eq(courses.id, courseId));
+  return { courseId, status: "active" as const };
+}
+
 export async function appendPlaceToCourse(userId: number, courseId: number, place: SavedPlaceInput) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");

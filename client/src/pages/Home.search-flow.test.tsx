@@ -52,7 +52,7 @@ vi.mock("@/lib/trpc", () => {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, start: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, public: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
@@ -520,8 +520,10 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "홈" }));
     await user.click(screen.getByRole("button", { name: "코스 보기" }));
-    expect(screen.getByRole("heading", { name: "진행 중인 코스" })).toBeTruthy();
-    expect(screen.getByText("오늘의 일정")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Route" })).toBeTruthy();
+    expect(screen.getByText("시간, 순서, 실제 메모까지")).toBeTruthy();
+    expect(screen.getByText("NEXT PLACE")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "다음 장소로" })).toBeTruthy();
   });
 
   it("manages course dates and status while surfacing schedule conflicts", async () => {
