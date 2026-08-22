@@ -131,7 +131,7 @@ export async function createCourse(userId: number, input: CourseInput) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   return db.transaction(async (tx) => {
-    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false });
+    const result = await tx.insert(courses).values({ ownerId: userId, title: input.title, region: input.region, description: input.description, coverImage: input.coverImage, shareImageUrl: input.shareImageUrl, photoUrls: JSON.stringify(input.photoUrls ?? []), completedPlaceIds: "[]", startDate: toCourseDate(input.startDate), endDate: toCourseDate(input.endDate), status: input.status ?? "planned", isPublic: input.isPublic ?? false });
     const courseId = Number(result[0].insertId);
     if (input.items.length > 0) {
       await tx.insert(courseItems).values(input.items.map((item) => ({ ...item, courseId })));
@@ -152,7 +152,7 @@ export async function listPublicCourses() {
   return db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -168,7 +168,7 @@ export async function getCourseDetails(courseId: number, viewerId?: number) {
   const course = (await db
     .select({
       id: courses.id, ownerId: courses.ownerId, title: courses.title, region: courses.region, description: courses.description,
-      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
+      coverImage: courses.coverImage, shareImageUrl: courses.shareImageUrl, photoUrls: courses.photoUrls, completedPlaceIds: courses.completedPlaceIds, startDate: courses.startDate, endDate: courses.endDate, status: courses.status,
       isPublic: courses.isPublic, sourceCourseId: courses.sourceCourseId, createdAt: courses.createdAt, updatedAt: courses.updatedAt,
       authorName: users.name, authorAvatarUrl: users.avatarUrl,
     })
@@ -202,6 +202,16 @@ export async function startCourse(userId: number, courseId: number) {
   if (!owned[0]) throw new Error("Course not found or not owned by user");
   await db.update(courses).set({ status: "active" }).where(eq(courses.id, courseId));
   return { courseId, status: "active" as const };
+}
+
+export async function updateCourseProgress(userId: number, courseId: number, completedPlaceIds: string[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const owned = await db.select({ id: courses.id }).from(courses).where(and(eq(courses.id, courseId), eq(courses.ownerId, userId))).limit(1);
+  if (!owned[0]) throw new Error("Course not found or not owned by user");
+  const normalizedIds = Array.from(new Set(completedPlaceIds.map((placeId) => placeId.trim()).filter(Boolean))).slice(0, 100);
+  await db.update(courses).set({ completedPlaceIds: JSON.stringify(normalizedIds), updatedAt: new Date() }).where(eq(courses.id, courseId));
+  return { courseId, completedPlaceIds: normalizedIds };
 }
 
 export async function appendPlaceToCourse(userId: number, courseId: number, place: SavedPlaceInput) {
@@ -244,6 +254,7 @@ export async function clonePublicCourse(userId: number, courseId: number) {
       coverImage: source.coverImage,
       shareImageUrl: source.shareImageUrl,
       photoUrls: source.photoUrls,
+      completedPlaceIds: "[]",
       startDate: source.startDate,
       endDate: source.endDate,
       status: "planned",

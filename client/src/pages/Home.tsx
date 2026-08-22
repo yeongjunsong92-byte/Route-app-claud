@@ -71,7 +71,7 @@ type Place = {
 
 type CourseItem = { name: string; time: string; duration: string; cost: number; image: string; address?: string; dayNumber?: number; durationMinutes?: number };
 type CourseStatus = "planned" | "active" | "completed";
-type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null; photoUrls?: string | string[] | null };
+type Course = { id: string; title: string; region: string; author: string; image: string; likes: number; days: number; items: CourseItem[]; startDate?: string | Date | null; endDate?: string | Date | null; status?: CourseStatus; isPublic?: boolean; shareImageUrl?: string | null; photoUrls?: string | string[] | null; completedPlaceIds?: string | string[] | null };
 type NavigationOrigin = { id: string; label: string; address: string; lat: number; lng: number };
 type RegionSelection = { label: string; lat: number; lng: number };
 type RecentRegion = RegionSelection & { isFavorite?: boolean };
@@ -114,6 +114,17 @@ function parseCoursePhotoUrls(value: unknown) {
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseCompletedPlaceIds(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 100);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 100) : [];
   } catch {
     return [];
   }
@@ -568,6 +579,7 @@ export default function Home() {
   const appendPlaceMutation = trpc.courses.appendPlace.useMutation();
   const updateCourseMutation = trpc.courses.update.useMutation();
   const startCourseMutation = trpc.courses.start.useMutation();
+  const updateCourseProgressMutation = trpc.courses.updateProgress.useMutation();
   const uploadCoursePhotoMutation = trpc.courses.uploadPhoto.useMutation();
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
   const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
@@ -708,6 +720,12 @@ export default function Home() {
   const selectedProfileInput = useMemo(() => ({ userId: selectedProfileUserId || 1 }), [selectedProfileUserId]);
   const selectedProfileQuery = trpc.people.profile.useQuery(selectedProfileInput, { enabled: selectedProfileUserId !== null });
   const selectedCourseQuery = trpc.courses.get.useQuery(selectedCourseInput, { enabled: ["edit-course", "course-detail", "public-course-detail", "active-course"].includes(screen) && selectedCourseId > 0 });
+
+  useEffect(() => {
+    if (screen !== "active-course") return;
+    const storedProgress = (selectedCourseQuery.data as any)?.completedPlaceIds ?? selectedCourse.completedPlaceIds;
+    setActiveCompletedPlaceIds(parseCompletedPlaceIds(storedProgress));
+  }, [screen, selectedCourse.completedPlaceIds, selectedCourseQuery.data]);
 
   useEffect(() => {
     if (!sharedCourseToken) return;
@@ -1187,7 +1205,7 @@ export default function Home() {
     setCourseMemos(Object.fromEntries(detail.items.map((item: any) => [item.placeId, item.note || ""])));
   }, [screen, selectedCourseQuery.data]);
 
-  const ownedCourses = useMemo<Course[]>(() => (myCoursesQuery.data || []).map((course: any) => ({ id: String(course.id), title: course.title, region: course.region || "서울", author: user?.name || "나의 Route", image: course.shareImageUrl || course.coverImage || mockPlaces[0].image, shareImageUrl: course.shareImageUrl, likes: 0, days: 1, items: [], startDate: course.startDate, endDate: course.endDate, status: course.status || "planned" })), [myCoursesQuery.data, user?.name]);
+  const ownedCourses = useMemo<Course[]>(() => (myCoursesQuery.data || []).map((course: any) => ({ id: String(course.id), title: course.title, region: course.region || "서울", author: user?.name || "나의 Route", image: course.shareImageUrl || course.coverImage || mockPlaces[0].image, shareImageUrl: course.shareImageUrl, likes: 0, days: 1, items: [], startDate: course.startDate, endDate: course.endDate, status: course.status || "planned", completedPlaceIds: course.completedPlaceIds })), [myCoursesQuery.data, user?.name]);
   const publicCourses = useMemo<Course[]>(() => (publicCoursesQuery.data || []).map((course: any) => ({ id: String(course.id), title: course.title, region: course.region || "여행", author: course.authorName || "Route 여행자", image: course.shareImageUrl || course.coverImage || mockPlaces[0].image, shareImageUrl: course.shareImageUrl, likes: 0, days: 1, items: [], startDate: course.startDate, endDate: course.endDate, status: course.status || "planned" })), [publicCoursesQuery.data]);
   const followingPublicCourses = useMemo<Course[]>(() => (followingPublicCoursesQuery.data || []).map((course: any) => ({ id: String(course.id), title: course.title, region: course.region || "여행", author: course.authorName || "Route 여행자", image: course.shareImageUrl || course.coverImage || mockPlaces[0].image, shareImageUrl: course.shareImageUrl, likes: 0, days: 1, items: [], startDate: course.startDate, endDate: course.endDate, status: course.status || "planned" })), [followingPublicCoursesQuery.data]);
   const displayedPublicCourses = publicCourseFilter === "following" ? followingPublicCourses : publicCourses;
@@ -1455,21 +1473,35 @@ export default function Home() {
     event.preventDefault();
     if (!navigationPlace) return;
     const place = navigationPlace;
-    const origin = navigationOrigin;
-    startNaverNavigation();
-    const userAgent = navigator.userAgent;
-    if (/Android/i.test(userAgent)) {
-      window.location.href = naverNavigationIntentUrl(place, origin, origin.label);
+    const openNaverWithOrigin = (origin: NavigationOrigin) => {
+      startNaverNavigation();
+      const userAgent = navigator.userAgent;
+      if (/Android/i.test(userAgent)) {
+        window.location.href = naverNavigationIntentUrl(place, origin, origin.label);
+        return;
+      }
+      if (/iPhone|iPad|iPod/i.test(userAgent)) {
+        window.location.href = naverNavigationUrl(place, origin, origin.label);
+        window.setTimeout(() => {
+          if (document.visibilityState === "visible") setIsNaverInstallHelpOpen(true);
+        }, 1200);
+        return;
+      }
+      window.open(naverMapSearchUrl(place), "_blank", "noopener,noreferrer");
+    };
+    if (navigationOriginOverride || userLocation || !navigator.geolocation) {
+      openNaverWithOrigin(navigationOrigin);
       return;
     }
-    if (/iPhone|iPad|iPod/i.test(userAgent)) {
-      window.location.href = naverNavigationUrl(place, origin, origin.label);
-      window.setTimeout(() => {
-        if (document.visibilityState === "visible") setIsNaverInstallHelpOpen(true);
-      }, 1200);
-      return;
-    }
-    window.open(naverMapSearchUrl(place), "_blank", "noopener,noreferrer");
+    toast.message("현재 위치를 출발지로 확인한 뒤 네이버 내비를 엽니다.");
+    navigator.geolocation.getCurrentPosition((position) => {
+      const origin: NavigationOrigin = { id: "current-location", label: "현재 위치", address: "기기의 현재 위치", lat: position.coords.latitude, lng: position.coords.longitude };
+      setUserLocation({ lat: origin.lat, lng: origin.lng });
+      openNaverWithOrigin(origin);
+    }, () => {
+      toast.message("현재 위치를 가져오지 못해 선택한 출발지로 길안내를 엽니다.");
+      openNaverWithOrigin(navigationOrigin);
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   };
   const openSaveSheet = (place: Place) => { setSelectedPlace(place); setSaveSheetOpen(true); };
   const savePlace = async () => {
@@ -1588,7 +1620,7 @@ export default function Home() {
   const sharedCourseDateRange = formatCourseDateRange((selectedCourseQuery.data as any)?.startDate || selectedCourse.startDate, (selectedCourseQuery.data as any)?.endDate || selectedCourse.endDate);
   const isSelectedCoursePublic = Boolean((selectedCourseQuery.data as any)?.isPublic ?? (selectedCourse as any).isPublic);
   const selectedCourseStatus = (selectedCourseQuery.data as any)?.status || selectedCourse.status || "planned";
-  const renderCourseStartAction = () => <section className="route-course-start-action" aria-label="코스 시작"><div><span>{selectedCourseStatus === "active" ? "ROUTE IN PROGRESS" : "READY TO EXPLORE"}</span><strong>{selectedCourseStatus === "active" ? "진행 중인 코스를 이어가세요" : "이 코스를 지금 시작할까요?"}</strong><small>{screen === "public-course-detail" && selectedCourseStatus !== "active" ? "저장한 코스는 내 코스로 복제한 뒤 시작됩니다." : "시간·순서·메모를 가진 진행 화면으로 이동합니다."}</small></div><button type="button" onClick={() => selectedCourseStatus === "active" ? (setActiveCourseBackScreen(screen), setActiveCourseMapMode("course"), setScreen("active-course")) : void startSelectedCourse()} disabled={updateCourseMutation.isPending || clonePublicCourseMutation.isPending || selectedCourseQuery.isLoading}><Navigation size={16} /> {selectedCourseStatus === "active" ? "진행 화면" : "코스 시작하기"}</button></section>;
+  const renderCourseStartAction = () => <section className="route-course-start-action" aria-label="코스 시작"><div><span>READY TO EXPLORE</span><strong>이 코스를 지금 시작할까요?</strong><small>{screen === "public-course-detail" ? "저장한 코스는 내 코스로 복제한 뒤 시작됩니다." : "시간·순서·메모를 가진 진행 화면으로 이동합니다."}</small></div><button type="button" onClick={() => void startSelectedCourse()} disabled={updateCourseMutation.isPending || clonePublicCourseMutation.isPending || selectedCourseQuery.isLoading}><Navigation size={16} /> 코스 시작하기</button></section>;
   const sharedCourseId = Number(selectedCourse.id);
   const courseShareLink = Number.isInteger(sharedCourseId) && sharedCourseId > 0
     ? `${window.location.origin}/share/course/${sharedCourseId}`
@@ -2302,14 +2334,33 @@ export default function Home() {
     const nextPlace = nextPlaceIndex >= 0 ? progressPlaces[nextPlaceIndex] : undefined;
     const nextItem = nextPlaceIndex >= 0 ? progressItems[nextPlaceIndex] : undefined;
     const progressContextPlaces = activeCourseMapMode === "all" ? visibleMapPlaces : [];
-    const completeCurrentPlace = () => {
+    const completeCurrentPlace = async () => {
       if (!nextPlace) return;
-      setActiveCompletedPlaceIds((current) => current.includes(nextPlace.id) ? current : [...current, nextPlace.id]);
-      toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+      const previousCompletedIds = activeCompletedPlaceIds;
+      const completedPlaceIds = previousCompletedIds.includes(nextPlace.id) ? previousCompletedIds : [...previousCompletedIds, nextPlace.id];
+      setActiveCompletedPlaceIds(completedPlaceIds);
+      if (!selectedCourseId) {
+        toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+        return;
+      }
+      try {
+        await updateCourseProgressMutation.mutateAsync({ courseId: selectedCourseId, completedPlaceIds });
+        await trpcUtils.courses.mine.invalidate();
+        toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+      } catch {
+        setActiveCompletedPlaceIds(previousCompletedIds);
+        toast.error("방문 완료 상태를 저장하지 못했습니다. 다시 시도해 주세요.");
+      }
     };
     const activeTitle = (selectedCourseQuery.data as any)?.title || selectedCourse.title || courseTitle || "나의 여행 코스";
     const activeDateRange = formatCourseDateRange((selectedCourseQuery.data as any)?.startDate || selectedCourse.startDate || courseStartDate, (selectedCourseQuery.data as any)?.endDate || selectedCourse.endDate || courseEndDate);
-    return <div className="route-screen route-active-course"><ScreenHeader title="Route" onBack={() => setScreen(activeCourseBackScreen)} right={<button aria-label="코스 공유" onClick={() => setIsCourseShareOpen(true)}><Bookmark size={18} /></button>} /><section className="route-active-course-map"><div className="route-active-course-map-heading"><span>ON ROUTE</span><h2>{activeTitle}</h2><p>{activeDateRange} · 장소 {progressItems.length}곳</p></div><div className="route-active-map-mode" role="tablist" aria-label="진행 지도 표시"><button role="tab" aria-selected={activeCourseMapMode === "course"} className={activeCourseMapMode === "course" ? "active" : ""} onClick={() => setActiveCourseMapMode("course")}>코스 장소만</button><button role="tab" aria-selected={activeCourseMapMode === "all"} className={activeCourseMapMode === "all" ? "active" : ""} onClick={() => setActiveCourseMapMode("all")}>전체 지도</button></div><CourseRouteMap key={`active-course-${selectedCourse.id}-${activeCourseMapMode}-${progressStops.map((stop) => `${stop.name}-${stop.progressStatus}`).join("-")}`} stops={progressStops} contextPlaces={progressContextPlaces} /><div className="route-active-map-legend"><span><i className="completed" />완료</span><span><i className="current" />현재</span><span><i className="upcoming" />미방문</span>{activeCourseMapMode === "all" && <span><i className="nearby" />주변 장소</span>}</div><div className="route-active-route-order" aria-label="코스 순서">{progressItems.slice(0, 5).map((item, index) => <span className={progressStops[index]?.progressStatus} key={`${item.name}-${index}`}><b>{index + 1}</b>{item.name}</span>)}</div></section><section className="route-active-next-place"><div><span>{nextPlace ? "NEXT PLACE" : "ALL DONE"}</span><strong>{nextPlace?.name || "오늘의 코스를 모두 완료했어요"}</strong><small>{nextPlace ? `${nextItem?.time || "10:00"} · ${nextPlace.address}` : "기록을 남기거나 코스 상세에서 일정을 확인해 보세요."}</small></div>{nextPlace && <div className="route-active-next-actions"><button className="complete" onClick={completeCurrentPlace}>완료</button><button onClick={() => openPlaceNavigation(nextPlace)}><Navigation size={16} /> 길안내</button></div>}</section><section className="route-active-course-timeline"><div className="route-active-timeline-heading"><div><span>ITINERARY</span><h2>시간, 순서, 실제 메모까지</h2></div><button onClick={() => { setCourseStep(2); setSelectedTab("courses"); setScreen("edit-course"); }}><Pencil size={14} /> 수정</button></div>{progressItems.map((item, index) => { const place = progressPlaces[index]; const status = progressStops[index]?.progressStatus || "upcoming"; return <button className={`is-${status}`} key={`${item.name}-${index}`} onClick={() => place && openPlace(place)}><time>{item.time}</time><span className="route-active-timeline-line"><b>{index + 1}</b></span><div><strong>{item.name}</strong><small>{courseMemos[place?.id || ""] || `${place?.address || "여행 장소"} · ${formatTotalDuration(item.durationMinutes || 60)}`}</small></div><em>{status === "completed" ? "완료" : status === "current" ? "현재" : "미방문"}</em></button>; })}</section><div className="route-active-course-actions"><button className="secondary" onClick={() => setScreen("course-detail")}>코스 상세</button><button onClick={() => nextPlace && openPlaceNavigation(nextPlace)} disabled={!nextPlace}><Navigation size={16} /> 다음 장소로</button></div></div>;
+    const leaveActiveCourse = () => {
+      if (activeCourseBackScreen === "home") { setSelectedTab("home"); setScreen("home"); return; }
+      if (activeCourseBackScreen === "course-detail") { setSelectedTab("courses"); setScreen("course-detail"); return; }
+      if (activeCourseBackScreen === "public-course-detail") { setSelectedTab("friends"); setScreen("public-course-detail"); return; }
+      setScreen(activeCourseBackScreen);
+    };
+    return <div className="route-screen route-active-course"><ScreenHeader title="Route" onBack={leaveActiveCourse} right={<button aria-label="코스 공유" onClick={() => setIsCourseShareOpen(true)}><Bookmark size={18} /></button>} /><section className="route-active-course-map"><div className="route-active-course-map-heading"><span>ON ROUTE</span><h2>{activeTitle}</h2><p>{activeDateRange} · 장소 {progressItems.length}곳</p></div><div className="route-active-map-mode" role="tablist" aria-label="진행 지도 표시"><button role="tab" aria-selected={activeCourseMapMode === "course"} className={activeCourseMapMode === "course" ? "active" : ""} onClick={() => setActiveCourseMapMode("course")}>코스 장소만</button><button role="tab" aria-selected={activeCourseMapMode === "all"} className={activeCourseMapMode === "all" ? "active" : ""} onClick={() => setActiveCourseMapMode("all")}>전체 지도</button></div><CourseRouteMap key={`active-course-${selectedCourse.id}-${activeCourseMapMode}-${progressStops.map((stop) => `${stop.name}-${stop.progressStatus}`).join("-")}`} stops={progressStops} contextPlaces={progressContextPlaces} /><div className="route-active-map-legend"><span><i className="completed" />완료</span><span><i className="current" />현재</span><span><i className="upcoming" />미방문</span>{activeCourseMapMode === "all" && <span><i className="nearby" />주변 장소</span>}</div><div className="route-active-route-order" aria-label="코스 순서">{progressItems.slice(0, 5).map((item, index) => <span className={progressStops[index]?.progressStatus} key={`${item.name}-${index}`}><b>{index + 1}</b>{item.name}</span>)}</div></section><section className="route-active-next-place"><div><span>{nextPlace ? "NEXT PLACE" : "ALL DONE"}</span><strong>{nextPlace?.name || "오늘의 코스를 모두 완료했어요"}</strong><small>{nextPlace ? `${nextItem?.time || "10:00"} · ${nextPlace.address}` : "기록을 남기거나 코스 상세에서 일정을 확인해 보세요."}</small></div>{nextPlace && <div className="route-active-next-actions"><button className="complete" onClick={() => void completeCurrentPlace()} disabled={updateCourseProgressMutation.isPending}>완료</button><button onClick={() => openPlaceNavigation(nextPlace)}><Navigation size={16} /> 길안내</button></div>}</section><section className="route-active-course-timeline"><div className="route-active-timeline-heading"><div><span>ITINERARY</span><h2>시간, 순서, 실제 메모까지</h2></div><button onClick={() => { setCourseStep(2); setSelectedTab("courses"); setScreen("edit-course"); }}><Pencil size={14} /> 수정</button></div>{progressItems.map((item, index) => { const place = progressPlaces[index]; const status = progressStops[index]?.progressStatus || "upcoming"; return <button className={`is-${status}`} key={`${item.name}-${index}`} onClick={() => place && openPlace(place)}><time>{item.time}</time><span className="route-active-timeline-line"><b>{index + 1}</b></span><div><strong>{item.name}</strong><small>{courseMemos[place?.id || ""] || `${place?.address || "여행 장소"} · ${formatTotalDuration(item.durationMinutes || 60)}`}</small></div><em>{status === "completed" ? "완료" : status === "current" ? "현재" : "미방문"}</em></button>; })}</section><div className="route-active-course-actions"><button className="secondary" onClick={() => setScreen("course-detail")}>코스 상세</button><button onClick={() => nextPlace && openPlaceNavigation(nextPlace)} disabled={!nextPlace}><Navigation size={16} /> 다음 장소로</button></div></div>;
   };
 
   const renderFriends = () => {
@@ -2371,8 +2422,8 @@ export default function Home() {
   else if (screen === "data-guide") content = renderDataGuide();
   else if (screen === "mypage") content = renderMyPage();
   else if (screen === "active-course") content = renderActiveCourse();
-  else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-active-trip"><div><span>{courseStatusLabel[courseStatus].toUpperCase()}</span><h2>{courseTitle || "나의 여행 코스"}</h2><p>{formatCourseDateRange(courseStartDate, courseEndDate)} · 다음 일정 {courseTimes[coursePlaces[0]?.id] || "10:00"}</p><small>{courseStatusLabel[courseStatus]} · 장소 {coursePlaces.length}곳 · 지금 여행을 이어가세요.</small></div><button onClick={() => { setActiveCourseBackScreen("home"); setActiveCompletedPlaceIds([]); setActiveCourseMapMode("course"); setScreen("active-course"); }}>코스 보기 <ChevronRight size={15} /></button></section><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
+  else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
-  const homeStartableCourse = ownedCourses.find((course) => course.status === "planned") || ownedCourses.find((course) => course.status === "active");
-  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && renderCourseStartAction()}{screen === "home" && homeStartableCourse && <button className="route-home-course-start" onClick={() => homeStartableCourse.status === "active" ? (setActiveCourseBackScreen("home"), setActiveCompletedPlaceIds([]), setActiveCourseMapMode("course"), setSelectedCourse(homeStartableCourse), setScreen("active-course")) : void startListedCourse(homeStartableCourse)} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>{homeStartableCourse.status === "active" ? "진행 중인 코스" : "예정 코스"}</small><strong>{homeStartableCourse.status === "active" ? "코스 이어가기" : "코스 시작하기"}</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{renderNaverNavigationConfirmSheet()}{renderNaverInstallHelpSheet()}{renderRecentDestinationManager()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
+  const homeActiveCourse = ownedCourses.find((course) => course.status === "active");
+  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && selectedCourseStatus !== "active" && renderCourseStartAction()}{screen === "home" && homeActiveCourse && <button className="route-home-course-start" onClick={() => { setActiveCourseBackScreen("home"); setActiveCompletedPlaceIds(parseCompletedPlaceIds(homeActiveCourse.completedPlaceIds)); setActiveCourseMapMode("course"); setSelectedCourse(homeActiveCourse); setScreen("active-course"); }} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>진행 중인 코스</small><strong>코스 이어가기</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{renderNaverNavigationConfirmSheet()}{renderNaverInstallHelpSheet()}{renderRecentDestinationManager()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
 }

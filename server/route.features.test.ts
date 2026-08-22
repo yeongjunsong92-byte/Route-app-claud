@@ -127,6 +127,8 @@ describe("Route course procedures", () => {
     await expect(caller.people.toggleFollow({ userId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.courses.clonePublic({ courseId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.courses.start({ courseId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.updateProgress({ courseId: 0, completedPlaceIds: ["place-1"] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.courses.updateProgress({ courseId: 1, completedPlaceIds: [""] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.places.updateRecord({ savedPlaceId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

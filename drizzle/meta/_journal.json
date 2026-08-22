@@ -57,6 +57,13 @@
       "when": 1787366817716,
       "tag": "0007_handy_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787391309378,
+      "tag": "0008_dark_dragon_lord",
+      "breakpoints": true
     }
   ]
 }

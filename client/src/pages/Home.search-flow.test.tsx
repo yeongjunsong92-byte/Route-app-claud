@@ -34,7 +34,7 @@ vi.mock("framer-motion", () => ({
 vi.mock("@/lib/trpc", () => {
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false });
   const query = () => ({ data: [], isLoading: false, isError: false });
-  const ownedCourse = { id: 101, title: "성수 하루 코스", region: "서울", coverImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", startDate: null, endDate: null, status: "planned" };
+  const ownedCourse = { id: 101, title: "성수 하루 코스", region: "서울", coverImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", startDate: null, endDate: null, status: "active", completedPlaceIds: "[\"p1\"]" };
   const ownedCourseDetail = { ...ownedCourse, items: [
     { placeId: "p1", name: "성수 식당", category: "맛집", address: "서울 성동구 연무장7길 5", lat: 37.544, lng: 127.056, hours: null, durationMinutes: 60, dayNumber: 1, visitTime: "14:00", estimatedCost: 10000 },
     { placeId: "p2", name: "오븐 성수", category: "카페", address: "서울 성동구 연무장길 7", lat: 37.545, lng: 127.057, durationMinutes: 60, dayNumber: 1, visitTime: "15:40", estimatedCost: 15000 },
@@ -52,7 +52,7 @@ vi.mock("@/lib/trpc", () => {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
-      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, start: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
+      courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, start: { useMutation: mutation }, updateProgress: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
       auth: { updateProfile: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, public: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
@@ -514,36 +514,21 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "카카오톡으로 길찾기 공유" })).toBeTruthy();
   });
 
-  it("opens the active trip page from the home screen", async () => {
+  it("keeps the home screen free of the removed scheduled-course card", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "홈" }));
-    await user.click(screen.getByRole("button", { name: "코스 보기" }));
-    expect(screen.getByRole("heading", { name: "Route" })).toBeTruthy();
-    expect(screen.getByText("시간, 순서, 실제 메모까지")).toBeTruthy();
-    expect(screen.getByText("NEXT PLACE")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "다음 장소로" })).toBeTruthy();
+    expect(screen.queryByText("지금 여행을 이어가세요.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "코스 보기" })).toBeNull();
   });
 
-  it("distinguishes completed stops, switches the active map view, and returns to the home screen", async () => {
+  it("keeps the home card free of the removed duplicate active-trip message", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "홈" }));
-    await user.click(screen.getByRole("button", { name: "코스 보기" }));
-
-    const mapMode = screen.getByRole("tablist", { name: "진행 지도 표시" });
-    expect(within(mapMode).getByRole("tab", { name: "코스 장소만" }).getAttribute("aria-selected")).toBe("true");
-    await user.click(within(mapMode).getByRole("tab", { name: "전체 지도" }));
-    expect(within(mapMode).getByRole("tab", { name: "전체 지도" }).getAttribute("aria-selected")).toBe("true");
-
-    await user.click(screen.getByRole("button", { name: "완료" }));
-    expect(screen.getAllByText("완료").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("현재").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "뒤로" }));
-    expect(screen.getByRole("button", { name: "코스 보기" })).toBeTruthy();
+    expect(screen.queryByText("진행 중인 코스를 이어가세요")).toBeNull();
   });
 
   it("manages course dates and status while surfacing schedule conflicts", async () => {
@@ -738,7 +723,7 @@ describe("home place search flow", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the selected course lifecycle on the home active-trip card", async () => {
+  it("does not restore the removed scheduled-course summary after editing a draft", async () => {
     const user = userEvent.setup();
     render(<Home />);
 
@@ -752,8 +737,7 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "뒤로" }));
     await user.click(screen.getByRole("button", { name: "홈" }));
 
-    expect(screen.getByText("진행 중")).toBeTruthy();
-    expect(screen.getByText(/2026\.09\.01 ~ 2026\.09\.03/)).toBeTruthy();
+    expect(screen.queryByText("지금 여행을 이어가세요.")).toBeNull();
   });
 
   it("opens the personal place record editor from a saved place", async () => {

@@ -52,11 +52,11 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("syncMapMarkers(map, visibleMapPlaces)");
     expect(homeSource).toContain("syncMapMarkers(mainMapRef.current, visibleMapPlaces)");
     expect(homeSource).toContain("openCoursePicker");
-    expect(homeSource).toContain("route-home-active-trip");
+    expect(homeSource).toContain("route-home-course-start");
     expect(homeSource).toContain("naverReservationUrl");
     expect(homeSource).toContain("naverMapSearchUrl");
     expect(homeSource).toContain("renderScheduleWarnings(selectedCourseScheduleWarnings)");
-    expect(homeSource).toContain("courseStatusLabel[courseStatus]");
+    expect(homeSource).toContain('courseStatusLabel[selectedCourse.status || "planned"]');
     expect(homeSource).toContain('hours: item.hours || ""');
     expect(homeSource).toContain("hours: place.hours");
     expect(homeSource).toContain("hours: coursePickerPlace.hours");
