@@ -5,11 +5,13 @@ import React from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const authState = vi.hoisted(() => ({ loading: false, isAuthenticated: true }));
+
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: 1, name: "Route Tester" },
-    loading: false,
-    isAuthenticated: true,
+    loading: authState.loading,
+    isAuthenticated: authState.isAuthenticated,
     logout: vi.fn(),
   }),
 }));
@@ -67,6 +69,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  authState.loading = false;
+  authState.isAuthenticated = true;
   window.localStorage.removeItem("route-recent-place-searches");
   window.localStorage.removeItem("route-recent-map-regions");
   window.localStorage.removeItem("route-navigation-origin-favorites");
@@ -84,6 +88,17 @@ function getPlaceMainButton(name: string) {
 }
 
 describe("home place search flow", () => {
+  it("keeps the Home hook order stable when authentication loading finishes", () => {
+    authState.loading = true;
+    const { rerender } = render(<Home />);
+    expect(screen.getByText("Route를 준비하고 있습니다.")).toBeTruthy();
+
+    authState.loading = false;
+    rerender(<Home />);
+
+    expect(screen.getByTestId("map-view")).toBeTruthy();
+  });
+
   it("opens the map search screen when the home search bar is clicked", async () => {
     const user = userEvent.setup();
     render(<Home />);

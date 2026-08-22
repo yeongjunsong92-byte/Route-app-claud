@@ -1230,6 +1230,12 @@ export default function Home() {
   const hasDbCourses = ownedCourses.length > 0;
   const courseList = ownedCourses;
 
+  useEffect(() => {
+    if (navigationBackScreen !== "active-course" || (screen !== "map" && screen !== "place-detail")) return;
+    setNavigationBackScreen("map");
+    setScreen("active-course");
+  }, [navigationBackScreen, screen]);
+
   if (loading) return <div className="route-loading">Route를 준비하고 있습니다.</div>;
   if (!isAuthenticated) return <div className="route-login"><div><RouteBrandMark /><p>발견한 장소를 저장하고<br />나만의 여행으로 만들어보세요.</p><ul><li><MapPin size={14} /> 지도에서 장소를 발견하고 저장</li><li><Calendar size={14} /> 저장한 장소로 나만의 코스 만들기</li><li><ShieldCheck size={14} /> 위치와 코스 공개 범위는 직접 선택</li></ul><Button onClick={startLogin}>Manus로 시작하기</Button></div></div>;
 
@@ -1424,11 +1430,6 @@ export default function Home() {
       toast.error("장소 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
   };
-  useEffect(() => {
-    if (navigationBackScreen !== "active-course" || (screen !== "map" && screen !== "place-detail")) return;
-    setNavigationBackScreen("map");
-    setScreen("active-course");
-  }, [navigationBackScreen, screen]);
   const openPlaceNavigation = (place: Place) => {
     setNavigationBackScreen(screen);
     setNavigationPlace(place);
