@@ -88,7 +88,7 @@ function getPlaceMainButton(name: string) {
 }
 
 describe("home place search flow", () => {
-  it("keeps the Home hook order stable when authentication loading finishes", () => {
+  it("keeps the Home hook order stable and shows a map transition loader when authentication loading finishes", () => {
     authState.loading = true;
     const { rerender } = render(<Home />);
     expect(screen.getByText("Route를 준비하고 있습니다.")).toBeTruthy();
@@ -97,6 +97,7 @@ describe("home place search flow", () => {
     rerender(<Home />);
 
     expect(screen.getByTestId("map-view")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "지도를 준비하고 있습니다" })).toBeTruthy();
   });
 
   it("opens the map search screen when the home search bar is clicked", async () => {

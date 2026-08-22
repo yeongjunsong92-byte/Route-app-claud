@@ -282,6 +282,10 @@ function RouteBrandMark({ compact = false }: { compact?: boolean }) {
   return <span className={`route-brand-mark${compact ? " compact" : ""}`}><img src={ROUTE_APP_ICON_URL} alt="" /><strong>Route</strong></span>;
 }
 
+function RouteMapEntryLoader() {
+  return <div className="route-map-entry-loader" role="status" aria-live="polite" aria-label="지도를 준비하고 있습니다"><div className="route-map-entry-loader-card"><RouteBrandMark compact /><span className="route-map-entry-loader-pulse"><MapPin size={15} fill="currentColor" /></span><strong>내 주변 여행지를 불러오는 중이에요</strong><small>잠시만 기다려 주세요.</small></div></div>;
+}
+
 function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
   const tabs: Array<{ id: Tab; label: string; icon: typeof Compass }> = [
     { id: "home", label: "홈", icon: Compass }, { id: "map", label: "지도", icon: MapPin }, { id: "courses", label: "코스", icon: Calendar }, { id: "friends", label: "친구", icon: Users }, { id: "mypage", label: "마이", icon: User },
@@ -598,6 +602,7 @@ export default function Home() {
   const clonePublicCourseMutation = trpc.courses.clonePublic.useMutation();
   const trpcUtils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("map");
+  const [isMapEntryTransitionVisible, setIsMapEntryTransitionVisible] = useState(false);
   const [placeDetailBackScreen, setPlaceDetailBackScreen] = useState<Screen>("map");
   const [selectedTab, setSelectedTab] = useState<Tab>("map");
   const [query, setQuery] = useState("");
@@ -709,6 +714,7 @@ export default function Home() {
   const mainMapRef = useRef<google.maps.Map | null>(null);
   const placeMarkerRefs = useRef<google.maps.Marker[]>([]);
   const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const hasPendingAuthenticationLoadRef = useRef(false);
   const tutorialSpotlightMarkerRef = useRef<google.maps.Marker | null>(null);
   const mapClusterZoomListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const pendingMapRestoreRef = useRef<MapReturnState | null>(null);
@@ -1235,6 +1241,24 @@ export default function Home() {
     setNavigationBackScreen("map");
     setScreen("active-course");
   }, [navigationBackScreen, screen]);
+
+  useEffect(() => {
+    if (loading) {
+      hasPendingAuthenticationLoadRef.current = true;
+      return;
+    }
+    if (!isAuthenticated) {
+      hasPendingAuthenticationLoadRef.current = false;
+      setIsMapEntryTransitionVisible(false);
+      return;
+    }
+    if (!hasPendingAuthenticationLoadRef.current) return;
+
+    hasPendingAuthenticationLoadRef.current = false;
+    setIsMapEntryTransitionVisible(true);
+    const timeout = window.setTimeout(() => setIsMapEntryTransitionVisible(false), 520);
+    return () => window.clearTimeout(timeout);
+  }, [isAuthenticated, loading]);
 
   if (loading) return <div className="route-loading">Route를 준비하고 있습니다.</div>;
   if (!isAuthenticated) return <div className="route-login"><div><RouteBrandMark /><p>발견한 장소를 저장하고<br />나만의 여행으로 만들어보세요.</p><ul><li><MapPin size={14} /> 지도에서 장소를 발견하고 저장</li><li><Calendar size={14} /> 저장한 장소로 나만의 코스 만들기</li><li><ShieldCheck size={14} /> 위치와 코스 공개 범위는 직접 선택</li></ul><Button onClick={startLogin}>Manus로 시작하기</Button></div></div>;
@@ -2499,7 +2523,7 @@ export default function Home() {
   const renderDataGuide = () => <div className="route-screen route-data-guide"><ScreenHeader title="데이터·공개 범위 안내" onBack={() => setScreen("mypage")} /><section><div className="route-data-guide-hero"><ShieldCheck size={28} /><span>ROUTE TRANSPARENCY</span><h2>내 여행 기록은 내가 관리해요</h2><p>Route는 장소 저장, 코스 제작, 공유를 위해 필요한 정보만 앱 안에서 사용합니다.</p></div><article><MapPin size={18} /><div><strong>현재 위치</strong><p>현재 위치는 지도 중심과 주변 검색에만 사용됩니다. 권한을 허용하지 않아도 지역을 직접 선택해 탐색할 수 있어요.</p></div></article><article><Calendar size={18} /><div><strong>장소와 코스</strong><p>저장한 장소와 코스는 기본적으로 내 기록입니다. 코스를 전체 공개로 변경하면 다른 Route 사용자가 코스를 보고 링크로 열 수 있습니다.</p></div></article><article><Share2 size={18} /><div><strong>공유 링크와 사진</strong><p>공개 코스의 공유 링크에는 코스명, 일정 요약, 선택한 대표 사진이 표시됩니다. 공개 전 공유 범위와 대표 사진을 다시 확인해 주세요.</p></div></article><article><User size={18} /><div><strong>내 기록 관리</strong><p>내 장소와 내 코스 화면에서 저장한 기록을 확인하고 수정할 수 있습니다. 공개 여부를 변경하면 이후 공유 범위에 반영됩니다.</p></div></article></section></div>;
 
   let content: ReactNode;
-  if (screen === "map") content = renderMapScreen();
+  if (screen === "map") content = <>{renderMapScreen()}{isMapEntryTransitionVisible && <RouteMapEntryLoader />}</>;
   else if (screen === "search") content = renderSearchScreen();
   else if (screen === "place-detail") content = renderPlaceDetailWithNavigation();
   else if (screen === "place-navigation") content = renderNaverNavigation();
