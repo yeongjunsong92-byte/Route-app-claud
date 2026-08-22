@@ -645,7 +645,7 @@ describe("home place search flow", () => {
 
     expect(screen.getByRole("region", { name: "코스 공유" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "공유 링크 복사" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "코스 이미지 저장" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Instagram Story용 이미지 다운로드" })).toBeTruthy();
   });
 
   it("copies a public course through the OG preview sharing URL", async () => {
@@ -688,20 +688,32 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "코스 공유" })).toBeTruthy();
   });
 
-  it("exports a shared course as a PNG image", async () => {
+  it("exports a shared course as a 9:16 Story PNG image", async () => {
     const user = userEvent.setup();
-    const drawContext = { fillStyle: "", font: "", fillRect: vi.fn(), beginPath: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), arc: vi.fn() } as unknown as CanvasRenderingContext2D;
+    class FailedImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      width = 0;
+      height = 0;
+      crossOrigin = "";
+      set src(_value: string) { queueMicrotask(() => this.onerror?.()); }
+    }
+    vi.stubGlobal("Image", FailedImage);
+    const drawContext = { fillStyle: "", font: "", fillRect: vi.fn(), beginPath: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), fillText: vi.fn(), arc: vi.fn(), drawImage: vi.fn(), createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })) } as unknown as CanvasRenderingContext2D;
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(drawContext);
     vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,route");
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(null));
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "친구" }));
     await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
     await user.click(screen.getByRole("button", { name: "코스 공유" }));
-    await user.click(screen.getByRole("button", { name: "코스 이미지 저장" }));
+    await user.click(screen.getByRole("button", { name: "Instagram Story용 이미지 다운로드" }));
 
-    expect(anchorClick).toHaveBeenCalled();
+    await waitFor(() => expect(anchorClick).toHaveBeenCalled());
+    expect(drawContext.fillRect).toHaveBeenCalledWith(0, 0, 1080, 1920);
+    vi.unstubAllGlobals();
   });
 
   it("shows the selected course lifecycle on the home active-trip card", async () => {
@@ -804,7 +816,7 @@ describe("home place search flow", () => {
     expect(screen.getByText("공유 링크와 사진")).toBeTruthy();
   });
 
-  it("opens Twitter and Facebook share pages with a public course link", async () => {
+  it("opens X and Facebook share pages with a public course link", async () => {
     const user = userEvent.setup();
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
     render(<Home />);
@@ -812,7 +824,7 @@ describe("home place search flow", () => {
     await user.click(screen.getByRole("button", { name: "친구" }));
     await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
     await user.click(screen.getByRole("button", { name: "코스 공유" }));
-    await user.click(screen.getByRole("button", { name: "트위터에 코스 공유" }));
+    await user.click(screen.getByRole("button", { name: "X에 코스 공유" }));
     await user.click(screen.getByRole("button", { name: "페이스북에 코스 공유" }));
 
     expect(open).toHaveBeenCalledWith(expect.stringContaining("twitter.com/intent/tweet"), "_blank", "noopener,noreferrer");
@@ -832,6 +844,47 @@ describe("home place search flow", () => {
     expect(screen.getByText("코스 사진과 대표 사진")).toBeTruthy();
     expect(screen.getByText("사진 추가 (0/8)")).toBeTruthy();
     expect(screen.getByRole("button", { name: "성수 식당 공유 미리보기 대표 사진" })).toBeTruthy();
+  });
+
+  it("adds a saved place in course edit while initializing its schedule defaults", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "코스 수정" }));
+    await user.click(screen.getByRole("button", { name: "장소 추가" }));
+    await user.click(screen.getByRole("button", { name: /테스트 저장 장소/ }));
+
+    expect(await screen.findByText("일정 장소 4곳")).toBeTruthy();
+    expect((screen.getByLabelText("테스트 저장 장소 일차") as HTMLSelectElement).value).toBe("1");
+    expect((screen.getByLabelText("테스트 저장 장소 체류 시간") as HTMLSelectElement).value).toBe("60");
+  });
+
+  it("shows completed-file progress and a retry control when a selected course photo cannot upload", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "코스 수정" }));
+    const imageInput = screen.getByRole("region", { name: "공유 미리보기 대표 사진" }).querySelector<HTMLInputElement>('input[type="file"]');
+    if (!imageInput) throw new Error("사진 선택 입력을 찾을 수 없습니다.");
+    fireEvent.change(imageInput, { target: { files: [new File(["photo"], "story-photo.jpg", { type: "image/jpeg" })] } });
+
+    expect(await screen.findByText("업로드 진행")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("실패")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "재시도" })).toBeTruthy();
+  });
+
+  it("shows direct Instagram Story download and X share controls in course detail", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "친구" }));
+    await user.click(screen.getByRole("button", { name: /제주 2박 3일 힐링 코스/ }));
+
+    expect(screen.getByRole("region", { name: "코스 빠른 공유" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "X에 공유" })).toBeTruthy();
+    expect(screen.getByText("9:16 이미지 다운로드")).toBeTruthy();
   });
 
   it("shows the first-map tutorial, stores completion, and lets users reopen it from my page", async () => {
