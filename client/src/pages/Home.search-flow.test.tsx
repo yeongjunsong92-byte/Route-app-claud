@@ -55,7 +55,7 @@ vi.mock("@/lib/trpc", () => {
       places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
       people: { discover: { useQuery: query }, following: { useQuery: query }, profile: { useQuery: query }, toggleFollow: { useMutation: mutation } },
       courses: { create: { useMutation: mutation }, update: { useMutation: mutation }, start: { useMutation: mutation }, updateProgress: { useMutation: () => ({ mutateAsync: vi.fn().mockResolvedValue({ courseId: 101, completedPlaceIds: ["p1", "p2", "p3"], status: "completed", completedAt: new Date("2026-08-22T00:00:00.000Z") }), isPending: false }) }, updateTravelRecord: { useMutation: mutation }, uploadTravelPhoto: { useMutation: mutation }, appendPlace: { useMutation: mutation }, uploadPhoto: { useMutation: mutation }, clonePublic: { useMutation: mutation }, mine: { useQuery: () => ({ data: [ownedCourse], isLoading: false, isError: false }) }, saved: { useQuery: query }, public: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, followingPublic: { useQuery: () => ({ data: [publishedCourse], isLoading: false, isError: false }) }, get: { useQuery: (input: { courseId: number }) => ({ data: input.courseId === 101 ? ownedCourseDetail : input.courseId === 201 ? publishedCourseDetail : null, isLoading: false, isError: false }) } },
-      auth: { updateProfile: { useMutation: mutation } },
+      auth: { updateProfile: { useMutation: mutation }, uploadProfileAvatar: { useMutation: mutation } },
       useUtils: () => ({ courses: { mine: { invalidate: vi.fn() }, get: { invalidate: vi.fn() }, public: { invalidate: vi.fn() }, followingPublic: { invalidate: vi.fn() } }, people: { discover: { invalidate: vi.fn() }, following: { invalidate: vi.fn() }, profile: { invalidate: vi.fn() } }, places: { saved: { invalidate: vi.fn() } } }),
     },
   };
@@ -235,6 +235,33 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "내 장소" })).toBeTruthy();
   });
 
+  it("filters saved places by category and exposes record management actions", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
+    await user.click(screen.getByRole("tab", { name: "카페" }));
+    expect(screen.getByRole("tab", { name: "카페" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: /기록 관리/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /테스트 저장 장소 저장 해제/ })).toBeTruthy();
+  });
+
+  it("opens the profile editor from my page and saves the profile draft", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getByRole("button", { name: "프로필 수정" }));
+    expect(screen.getByRole("dialog", { name: "프로필 편집" })).toBeTruthy();
+    await user.clear(screen.getByLabelText("닉네임"));
+    await user.type(screen.getByLabelText("닉네임"), "새 여행자");
+    await user.type(screen.getByLabelText("소개"), "여행을 기록하는 Route 사용자");
+    await user.click(screen.getByRole("button", { name: "저장하기" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "프로필 편집" })).toBeNull());
+    expect(screen.getByRole("heading", { name: "새 여행자" })).toBeTruthy();
+  });
+
   it("opens the course library, switches between my and saved courses, and opens profile management from my page", async () => {
     const user = userEvent.setup();
     let view = render(<Home />);
@@ -257,7 +284,7 @@ describe("home place search flow", () => {
     view = render(<Home />);
     await user.click(screen.getByRole("button", { name: "마이" }));
     await user.click(screen.getByRole("button", { name: "프로필 수정" }));
-    expect(screen.getByRole("heading", { name: "프로필" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "프로필 편집" })).toBeTruthy();
   });
 
   it("guides an empty saved-course library toward public course discovery", async () => {

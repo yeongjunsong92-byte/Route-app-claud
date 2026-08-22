@@ -78,9 +78,20 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
-    updateProfile: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100) })).mutation(async ({ ctx, input }) => {
-      await upsertUser({ openId: ctx.user.openId, name: input.name });
-      return { success: true, name: input.name } as const;
+    updateProfile: protectedProcedure.input(z.object({
+      name: z.string().trim().min(1).max(100),
+      bio: z.string().trim().max(500).nullable().optional(),
+      travelStyle: z.string().trim().max(100).nullable().optional(),
+      avatarUrl: z.string().max(2000).nullable().optional(),
+      avatarKey: z.string().max(512).nullable().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      await upsertUser({ openId: ctx.user.openId, ...input });
+      return { success: true, ...input } as const;
+    }),
+    uploadProfileAvatar: protectedProcedure.input(z.object({ dataUrl: z.string().min(32).max(8_500_000) })).mutation(async ({ ctx, input }) => {
+      const { bytes, contentType, extension } = parseImageDataUrl(input.dataUrl);
+      const uploaded = await storagePut(`route/users/${ctx.user.id}/profile/avatar-${Date.now()}.${extension}`, bytes, contentType);
+      return uploaded;
     }),
   }),
   places: router({

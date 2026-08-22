@@ -593,6 +593,7 @@ export default function Home() {
   const uploadCourseTravelPhotoMutation = trpc.courses.uploadTravelPhoto.useMutation();
   const uploadCoursePhotoMutation = trpc.courses.uploadPhoto.useMutation();
   const updateProfileMutation = trpc.auth.updateProfile.useMutation();
+  const uploadProfileAvatarMutation = trpc.auth.uploadProfileAvatar.useMutation();
   const savedPlacesQuery = trpc.places.saved.useQuery(undefined, { enabled: isAuthenticated });
   const myCoursesQuery = trpc.courses.mine.useQuery(undefined, { enabled: isAuthenticated });
   const savedCoursesQuery = trpc.courses.saved.useQuery(undefined, { enabled: isAuthenticated });
@@ -686,6 +687,11 @@ export default function Home() {
   const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
   const [activeDetailDay, setActiveDetailDay] = useState(1);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
+  const [profileBio, setProfileBio] = useState(user?.bio || "");
+  const [profileTravelStyle, setProfileTravelStyle] = useState(user?.travelStyle || "");
+  const [profileAvatarDataUrl, setProfileAvatarDataUrl] = useState<string | null>(null);
+  const [profileAvatarPreview, setProfileAvatarPreview] = useState<string | null>(user?.avatarUrl || null);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
   const [socialSearchQuery, setSocialSearchQuery] = useState("");
   const [selectedProfileUserId, setSelectedProfileUserId] = useState<number | null>(null);
   const [publicCourseFilter, setPublicCourseFilter] = useState<"following" | "all">("following");
@@ -706,6 +712,7 @@ export default function Home() {
   const [editPlaceSearch, setEditPlaceSearch] = useState("");
   const [editingSavedPlace, setEditingSavedPlace] = useState<any | null>(null);
   const [savedPlaceRecordDraft, setSavedPlaceRecordDraft] = useState({ customTitle: "", category: "", note: "" });
+  const [myPlacesCategory, setMyPlacesCategory] = useState("전체");
   const [savedPlacePhotoDataUrl, setSavedPlacePhotoDataUrl] = useState<string | null>(null);
   const [savedPlacePhotoPreview, setSavedPlacePhotoPreview] = useState<string | null>(null);
   const [shouldRemoveSavedPlacePhoto, setShouldRemoveSavedPlacePhoto] = useState(false);
@@ -749,6 +756,14 @@ export default function Home() {
     const storedProgress = (selectedCourseQuery.data as any)?.completedPlaceIds ?? selectedCourse.completedPlaceIds;
     setActiveCompletedPlaceIds(parseCompletedPlaceIds(storedProgress));
   }, [screen, selectedCourse.completedPlaceIds, selectedCourseQuery.data]);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfileName(user.name || "여행자");
+    setProfileBio(user.bio || "");
+    setProfileTravelStyle(user.travelStyle || "");
+    setProfileAvatarPreview(user.avatarUrl || null);
+  }, [user?.avatarUrl, user?.bio, user?.name, user?.travelStyle]);
 
   useEffect(() => {
     if (!sharedCourseToken) return;
@@ -1363,6 +1378,52 @@ export default function Home() {
     };
     reader.readAsDataURL(file);
   };
+  const openProfileEditor = () => {
+    setProfileName(user?.name || profileName || "여행자");
+    setProfileBio(user?.bio || profileBio || "");
+    setProfileTravelStyle(user?.travelStyle || profileTravelStyle || "");
+    setProfileAvatarDataUrl(null);
+    setProfileAvatarPreview(user?.avatarUrl || profileAvatarPreview || null);
+    setIsProfileEditorOpen(true);
+  };
+  const selectProfileAvatar = (file?: File) => {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 6 * 1024 * 1024) {
+      toast.error("JPG, PNG, WebP 형식의 6MB 이하 사진을 선택해 주세요.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : null;
+      if (!dataUrl) return;
+      setProfileAvatarDataUrl(dataUrl);
+      setProfileAvatarPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+  const saveProfile = async () => {
+    const name = profileName.trim();
+    if (!name) {
+      toast.error("닉네임을 입력해 주세요.");
+      return;
+    }
+    try {
+      let avatar: { url: string; key: string } | undefined;
+      if (profileAvatarDataUrl) avatar = await uploadProfileAvatarMutation.mutateAsync({ dataUrl: profileAvatarDataUrl });
+      await updateProfileMutation.mutateAsync({
+        name,
+        bio: profileBio.trim() || null,
+        travelStyle: profileTravelStyle.trim() || null,
+        ...(avatar ? { avatarUrl: avatar.url, avatarKey: avatar.key } : {}),
+      });
+      if (avatar) setProfileAvatarPreview(avatar.url);
+      setProfileAvatarDataUrl(null);
+      setIsProfileEditorOpen(false);
+      toast.success("프로필을 저장했습니다.");
+    } catch {
+      toast.error("프로필 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  };
   const readCoursePhotoAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("사진 파일을 읽지 못했습니다."));
@@ -1620,6 +1681,15 @@ export default function Home() {
   const savePlace = async () => {
     if (!selectedPlace) return;
     try { await savePlaceMutation.mutateAsync({ placeId: selectedPlace.id, name: selectedPlace.name, category: selectedPlace.category, address: selectedPlace.address, imageUrl: selectedPlace.image, lat: selectedPlace.lat, lng: selectedPlace.lng, hours: selectedPlace.hours }); setSaveSheetOpen(false); toast.success("내 장소에 저장했습니다."); } catch { toast.error("저장하지 못했습니다."); }
+  };
+  const removeSavedPlace = async (place: Place) => {
+    try {
+      await savePlaceMutation.mutateAsync({ placeId: place.id, name: place.name, category: place.category, address: place.address, imageUrl: place.image, lat: place.lat, lng: place.lng, hours: place.hours });
+      await trpcUtils.places.saved.invalidate();
+      toast.success("내 장소에서 삭제했습니다.");
+    } catch {
+      toast.error("저장 장소를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
   };
   const saveCourse = async () => {
     try {
@@ -2398,10 +2468,12 @@ export default function Home() {
 
   const renderMyPlaces = () => {
     const savedPlaces = savedPlacesQuery.data || [];
-    return <div className="route-screen route-list-screen"><ScreenHeader title="내 장소" onBack={() => setScreen("map")} right={<button aria-label="내 장소 더보기"><MoreHorizontal size={18} /></button>} /><div className="route-list-tabs"><button className="active">전체</button><button>맛집</button><button>카페</button><button>관광지</button></div><div className="route-list-content">{savedPlacesQuery.isLoading ? <div className="route-empty"><Bookmark size={22} /><strong>저장 장소를 불러오는 중입니다</strong></div> : savedPlaces.length ? savedPlaces.map((place: any) => {
+    const categories = ["전체", "맛집", "카페", "관광지"];
+    const filteredPlaces = myPlacesCategory === "전체" ? savedPlaces : savedPlaces.filter((place: any) => place.category === myPlacesCategory);
+    return <div className="route-screen route-list-screen"><ScreenHeader title="내 장소" onBack={() => setScreen("map")} right={<button aria-label="내 장소 더보기"><MoreHorizontal size={18} /></button>} /><div className="route-list-tabs" role="tablist" aria-label="내 장소 카테고리">{categories.map((category) => <button key={category} role="tab" aria-selected={myPlacesCategory === category} className={myPlacesCategory === category ? "active" : ""} onClick={() => setMyPlacesCategory(category)}>{category}</button>)}</div><div className="route-list-content">{savedPlacesQuery.isLoading ? <div className="route-empty"><Bookmark size={22} /><strong>저장 장소를 불러오는 중입니다</strong></div> : filteredPlaces.length ? filteredPlaces.map((place: any) => {
       const displayPlace: Place = { id: place.placeId, name: place.customTitle || place.name, category: place.category || "여행 장소", address: place.address || "주소 정보 없음", image: place.personalPhotoUrl || place.imageUrl || mockPlaces[0].image, description: place.note || "내 장소에 저장한 여행 기록입니다.", rating: 0, reviewCount: 0, lat: place.lat ?? DEFAULT_MAP_CENTER.lat, lng: place.lng ?? DEFAULT_MAP_CENTER.lng, hours: place.hours || "영업시간 확인", phone: "" };
-      return <div className="route-saved-place-record" key={place.id}><PlaceRow place={displayPlace} onClick={() => openPlace(displayPlace)} onSave={() => openSaveSheet(displayPlace)} /><div className="route-saved-place-record-meta"><span>{place.note ? "개인 메모 있음" : "개인 기록을 추가해보세요"}</span><button onClick={() => openSavedPlaceRecordEditor(place)}><Pencil size={13} /> 기록 관리</button></div></div>;
-    }) : <div className="route-empty"><Bookmark size={22} /><strong>저장한 장소가 없습니다</strong><span>지도에서 장소를 저장하고 나만의 여행 기록을 남겨보세요.</span></div>}</div></div>;
+      return <div className="route-saved-place-record" key={place.id}><PlaceRow place={displayPlace} onClick={() => openPlace(displayPlace)} onSave={() => openSaveSheet(displayPlace)} /><div className="route-saved-place-record-meta"><span>{place.note ? "개인 메모 있음" : "개인 기록을 추가해보세요"}</span><div><button onClick={() => openSavedPlaceRecordEditor(place)}><Pencil size={13} /> 기록 관리</button><button className="remove" aria-label={`${displayPlace.name} 저장 해제`} onClick={() => void removeSavedPlace(displayPlace)}><X size={13} /> 저장 해제</button></div></div></div>;
+    }) : <div className="route-empty"><Bookmark size={22} /><strong>{myPlacesCategory === "전체" ? "저장한 장소가 없습니다" : `${myPlacesCategory} 장소가 없습니다`}</strong><span>{myPlacesCategory === "전체" ? "지도에서 장소를 저장하고 나만의 여행 기록을 남겨보세요." : "다른 카테고리를 확인하거나 지도에서 새로운 장소를 찾아보세요."}</span></div>}</div></div>;
   };
 
   const renderCourseVisibilityControl = () => <><fieldset className="route-course-visibility" aria-label="공개 범위"><legend>공개 범위</legend><button type="button" className={!isCoursePublic ? "active" : ""} onClick={() => setIsCoursePublic(false)}><strong>비공개</strong><small>나만 볼 수 있어요</small></button><button type="button" className={isCoursePublic ? "active" : ""} onClick={() => setIsCoursePublic(true)}><strong>전체 공개</strong><small>다른 Route 사용자가 보고 링크로 열 수 있어요</small></button></fieldset>{screen === "course-create" && renderCourseShareImagePicker()}</>;
@@ -2535,18 +2607,24 @@ export default function Home() {
 
   const renderSavedCourses = () => <div className="route-screen route-list-screen"><ScreenHeader title="저장 코스" onBack={() => setScreen("mypage")} /><div className="route-saved-course-intro"><Bookmark size={17} /><span><strong>저장한 여행 코스</strong><small>나중에 참고할 여행 경험을 모아보세요.</small></span></div><div className="route-list-content">{savedCoursesQuery.isLoading ? <div className="route-empty"><Bookmark size={21} /><strong>저장 코스를 불러오는 중입니다</strong></div> : savedCoursesQuery.data?.length ? savedCoursesQuery.data.map((course: any) => <button className="route-saved-course-row" key={course.id} onClick={() => { setSelectedCourse({ id: String(course.id), title: course.title, region: course.region || "여행", author: "공개 코스", image: course.coverImage || mockPlaces[0].image, likes: 0, days: 1, items: [] }); setScreen("public-course-detail"); }}><img src={course.coverImage || mockPlaces[0].image} alt="" /><span><strong>{course.title}</strong><small>{course.region || "지역 정보 없음"}</small><em>저장됨</em></span><ChevronRight size={16} /></button>) : <div className="route-empty"><Bookmark size={22} /><strong>저장한 코스가 없습니다</strong><span>공개 코스에서 마음에 드는 여행 코스를 저장해보세요.</span></div>}</div></div>;
 
+  const renderProfileEditor = () => {
+    if (!isProfileEditorOpen) return null;
+    const isSaving = updateProfileMutation.isPending || uploadProfileAvatarMutation.isPending;
+    return <div className="route-overlay route-profile-editor-overlay" onClick={() => setIsProfileEditorOpen(false)}><section className="route-profile-editor" role="dialog" aria-modal="true" aria-label="프로필 편집" onClick={(event) => event.stopPropagation()}><div className="route-sheet-handle" /><div className="route-profile-editor-heading"><div><span>MY PROFILE</span><h2>나를 소개해 주세요</h2><p>여행 스타일과 기록을 다른 여행자에게 자연스럽게 보여줄 수 있어요.</p></div><button aria-label="프로필 편집 닫기" onClick={() => setIsProfileEditorOpen(false)}><X size={18} /></button></div><div className="route-profile-avatar-editor"><label aria-label="프로필 사진 변경"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { selectProfileAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /><span>{profileAvatarPreview ? <img src={profileAvatarPreview} alt="선택한 프로필 사진" /> : <b>{profileName.slice(0, 1).toUpperCase() || "여"}</b>}<em><Camera size={15} /></em></span><strong>프로필 사진 변경</strong><small>JPG, PNG, WebP · 최대 6MB</small></label></div><div className="route-profile-editor-fields"><label>닉네임<input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={100} placeholder="여행자 이름" /></label><label>소개<textarea value={profileBio} onChange={(event) => setProfileBio(event.target.value)} maxLength={500} placeholder="나의 여행 취향이나 다음 여행 계획을 소개해 주세요." /></label><label>여행 스타일<select value={profileTravelStyle} onChange={(event) => setProfileTravelStyle(event.target.value)}><option value="">선택하지 않음</option><option value="미식 탐험">미식 탐험</option><option value="카페·감성">카페·감성</option><option value="자연·휴식">자연·휴식</option><option value="도시·문화">도시·문화</option><option value="액티비티">액티비티</option></select></label></div><div className="route-profile-editor-actions"><button className="secondary" onClick={() => setIsProfileEditorOpen(false)}>취소</button><button onClick={() => void saveProfile()} disabled={isSaving}>{isSaving ? "저장 중" : "저장하기"}</button></div></section></div>;
+  };
+
   const renderMyPage = () => {
-    const displayName = user?.name || profileName || "여행자";
+    const displayName = profileName || user?.name || "여행자";
+    const displayBio = profileBio || user?.bio || user?.email || "나만의 여행 기록을 모아보세요.";
     const savedPlaceCount = savedPlacesQuery.data?.length || 0;
     const myCourseCount = courseList.length;
-    const openMyProfile = () => { if (user?.id) openSocialProfile(user.id); };
-    return <div className="route-screen route-my-page">
-      <div className="route-my-page-topbar"><span>MY ROUTE</span><button aria-label="프로필 수정" onClick={openMyProfile}><Pencil size={17} /></button></div>
-      <section className="route-my-profile-hero"><div className="route-my-avatar">{displayName.slice(0, 1).toUpperCase()}</div><div className="route-my-profile-copy"><span>TRAVEL ARCHIVE</span><h1>{displayName}</h1><p>{user?.email || "나만의 여행 기록을 모아보세요."}</p></div><button className="route-my-profile-edit" onClick={openMyProfile}>프로필 편집</button></section>
+    return <><div className="route-screen route-my-page">
+      <div className="route-my-page-topbar"><span>MY ROUTE</span><button aria-label="프로필 수정" onClick={openProfileEditor}><Pencil size={17} /></button></div>
+      <section className="route-my-profile-hero"><div className="route-my-avatar">{profileAvatarPreview ? <img src={profileAvatarPreview} alt="프로필 사진" /> : displayName.slice(0, 1).toUpperCase()}</div><div className="route-my-profile-copy"><span>{profileTravelStyle || "TRAVEL ARCHIVE"}</span><h1>{displayName}</h1><p>{displayBio}</p></div><button className="route-my-profile-edit" onClick={openProfileEditor}>프로필 편집</button></section>
       <section className="route-my-summary-grid"><button onClick={() => setScreen("my-places")}><MapPin size={18} /><strong>{savedPlaceCount}</strong><span>저장 장소</span></button><button onClick={() => openCourseLibrary("mine")}><Calendar size={18} /><strong>{myCourseCount}</strong><span>내 코스</span></button><button onClick={() => openCourseLibrary("saved")}><Bookmark size={18} /><strong>{savedCoursesQuery.data?.length || "보기"}</strong><span>저장 코스</span></button></section>
       <section className="route-my-page-section"><div className="route-my-section-heading"><div><span>TRAVEL MANAGEMENT</span><h2>내 여행 관리</h2></div><button onClick={() => { setCourseStep(1); setScreen("course-create"); }}>새 코스 <Plus size={15} /></button></div><div className="route-my-management-card"><button onClick={() => setScreen("my-places")}><span className="route-my-management-icon places"><MapPin size={19} /></span><span><strong>내 장소</strong><small>저장한 장소를 보고 코스에 추가하세요.</small></span><em>{savedPlaceCount}곳</em><ChevronRight size={16} /></button><button onClick={() => openCourseLibrary("mine")}><span className="route-my-management-icon courses"><Calendar size={19} /></span><span><strong>내 코스</strong><small>만든 여행 일정을 관리하세요.</small></span><em>{myCourseCount}개</em><ChevronRight size={16} /></button><button onClick={() => openCourseLibrary("saved")}><span className="route-my-management-icon saves"><Bookmark size={19} /></span><span><strong>저장한 코스</strong><small>다른 여행자의 코스를 다시 확인하세요.</small></span><ChevronRight size={16} /></button></div></section>
-      <section className="route-my-page-section route-my-account-section"><div className="route-my-section-heading"><div><span>PROFILE</span><h2>계정과 설정</h2></div></div><div className="route-my-nickname-card"><label>닉네임<input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label><button onClick={async () => { try { await updateProfileMutation.mutateAsync({ name: profileName }); toast.success("프로필을 저장했습니다."); } catch { toast.error("프로필 저장에 실패했습니다."); } }}>저장</button></div><div className="route-my-settings-card"><button onClick={openMyProfile}><span><User size={17} />프로필 관리</span><ChevronRight size={16} /></button><button onClick={() => { setMapTutorialStep(0); setIsMapTutorialOpen(true); setSelectedTab("map"); setScreen("map"); }}><span><MapPin size={17} />지도 사용 가이드 다시 보기</span><ChevronRight size={16} /></button><button onClick={() => setScreen("data-guide")}><span><ShieldCheck size={17} />데이터·공개 범위 안내</span><ChevronRight size={16} /></button><button onClick={() => void logout()}><span><Compass size={17} />로그아웃</span><ChevronRight size={16} /></button></div></section>
-    </div>;
+      <section className="route-my-page-section route-my-account-section"><div className="route-my-section-heading"><div><span>PROFILE</span><h2>계정과 설정</h2></div></div><div className="route-my-settings-card"><button onClick={openProfileEditor}><span><User size={17} />프로필 관리</span><ChevronRight size={16} /></button><button onClick={() => { setMapTutorialStep(0); setIsMapTutorialOpen(true); setSelectedTab("map"); setScreen("map"); }}><span><MapPin size={17} />지도 사용 가이드 다시 보기</span><ChevronRight size={16} /></button><button onClick={() => setScreen("data-guide")}><span><ShieldCheck size={17} />데이터·공개 범위 안내</span><ChevronRight size={16} /></button><button onClick={() => void logout()}><span><Compass size={17} />로그아웃</span><ChevronRight size={16} /></button></div></section>
+    </div>{renderProfileEditor()}</>;
   };
 
   const renderDataGuide = () => <div className="route-screen route-data-guide"><ScreenHeader title="데이터·공개 범위 안내" onBack={() => setScreen("mypage")} /><section><div className="route-data-guide-hero"><ShieldCheck size={28} /><span>ROUTE TRANSPARENCY</span><h2>내 여행 기록은 내가 관리해요</h2><p>Route는 장소 저장, 코스 제작, 공유를 위해 필요한 정보만 앱 안에서 사용합니다.</p></div><article><MapPin size={18} /><div><strong>현재 위치</strong><p>현재 위치는 지도 중심과 주변 검색에만 사용됩니다. 권한을 허용하지 않아도 지역을 직접 선택해 탐색할 수 있어요.</p></div></article><article><Calendar size={18} /><div><strong>장소와 코스</strong><p>저장한 장소와 코스는 기본적으로 내 기록입니다. 코스를 전체 공개로 변경하면 다른 Route 사용자가 코스를 보고 링크로 열 수 있습니다.</p></div></article><article><Share2 size={18} /><div><strong>공유 링크와 사진</strong><p>공개 코스의 공유 링크에는 코스명, 일정 요약, 선택한 대표 사진이 표시됩니다. 공개 전 공유 범위와 대표 사진을 다시 확인해 주세요.</p></div></article><article><User size={18} /><div><strong>내 기록 관리</strong><p>내 장소와 내 코스 화면에서 저장한 기록을 확인하고 수정할 수 있습니다. 공개 여부를 변경하면 이후 공유 범위에 반영됩니다.</p></div></article></section></div>;

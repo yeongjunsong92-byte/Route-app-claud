@@ -52,6 +52,24 @@ describe("Route course procedures", () => {
     await expect(caller.auth.updateProfile({ name: " " })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects an oversized profile introduction before hitting the database", async () => {
+    const caller = appRouter.createCaller({
+      ...publicContext(),
+      user: {
+        id: 1,
+        openId: "route-test-user",
+        name: "Route Test",
+        email: "route@test.local",
+        loginMethod: "test",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+    });
+    await expect(caller.auth.updateProfile({ name: "Route Test", bio: "가".repeat(501) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects a blank course title before hitting the database", async () => {
     const caller = appRouter.createCaller({
       ...publicContext(),
