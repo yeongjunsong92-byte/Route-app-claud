@@ -13,7 +13,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("setIsLocationPermissionHelpOpen(true)");
     expect(homeSource).toContain("RECENT_SEARCHES_KEY");
     expect(homeSource).toContain("route-recent-searches");
-    expect(homeSource).toContain("getUrl({ maxWidth: 720, maxHeight: 480 })");
+    expect(homeSource).toContain("getUrl({ maxWidth: 1200, maxHeight: 900 })");
     expect(homeSource).toContain("getPlacePhotos(selectedPlace)");
     expect(homeSource).toContain("removeRecentSearch");
     expect(homeSource).toContain("clearRecentSearches");
@@ -45,7 +45,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain("map.panTo({ lat: place.lat, lng: place.lng })");
     expect(homeSource).toContain("categoryPinColor(place.category)");
     expect(homeSource).toContain("service.getDetails");
-    expect(homeSource).toContain('fields: ["name", "formatted_address", "formatted_phone_number", "opening_hours", "photos", "website"]');
+    expect(homeSource).toContain('fields: ["place_id", "name", "formatted_address", "formatted_phone_number", "geometry", "opening_hours", "photos", "rating", "user_ratings_total", "types", "website"]');
     expect(homeSource).toContain("getUrl({ maxWidth: 1200, maxHeight: 900 })");
     expect(homeSource).toContain("route-photo-gallery-overlay");
     expect(homeSource).toContain("route-discovery-controls");
@@ -90,7 +90,7 @@ describe("Route map interactions", () => {
     expect(homeSource).toContain('현재 위치 주변 ${filter === "전체" ? "여행지·음식점·카페"');
     expect(homeSource).toContain('aria-pressed={openNowOnly}');
     expect(homeSource).toContain("현재 영업 중");
-    expect(homeSource).toContain('fields: ["opening_hours", "rating", "user_ratings_total"]');
+    expect(homeSource).toContain("toCanonicalGooglePlace");
     expect(homeSource).toContain("weekday_text");
     expect(homeSource).toContain("getGooglePlaceTodayHours");
     expect(homeSource).toContain("getDisplayHours");

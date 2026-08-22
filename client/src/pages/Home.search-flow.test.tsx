@@ -49,7 +49,10 @@ vi.mock("@/lib/trpc", () => {
     { placeId: "jeju-3", name: "오설록 티 뮤지엄", category: "관광지", address: "제주 서귀포시 안덕면", lat: 33.306, lng: 126.289, durationMinutes: 60, dayNumber: 2, visitTime: "15:00", estimatedCost: 12000 },
     { placeId: "jeju-4", name: "애월 해안도로", category: "관광지", address: "제주 제주시 애월읍", lat: 33.461, lng: 126.309, durationMinutes: 60, dayNumber: 2, visitTime: "17:30", estimatedCost: 0 },
   ] };
-  const savedPlacesQuery = () => ({ data: [{ id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 }], isLoading: false, isError: false });
+  const savedPlacesQuery = () => ({ data: [
+    { id: 1, placeId: "saved-test-place", name: "테스트 저장 장소", category: "카페", address: "서울 성동구 테스트길 1", imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085", lat: 37.546, lng: 127.059 },
+    { id: 2, placeId: "saved-no-photo-place", name: "사진 없는 카페", category: "카페", address: "서울 성동구 성수이로 22", imageUrl: null, lat: 37.545, lng: 127.057 },
+  ], isLoading: false, isError: false });
   return {
     trpc: {
       places: { toggleSaved: { useMutation: mutation }, updateRecord: { useMutation: mutation }, refreshSource: { useMutation: mutation }, uploadPersonalPhoto: { useMutation: mutation }, saved: { useQuery: savedPlacesQuery } },
@@ -244,8 +247,18 @@ describe("home place search flow", () => {
     await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
     await user.click(screen.getByRole("tab", { name: "카페" }));
     expect(screen.getByRole("tab", { name: "카페" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("button", { name: /기록 관리/ })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /기록 관리/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /테스트 저장 장소 저장 해제/ })).toBeTruthy();
+  });
+
+  it("shows a location preview instead of an unrelated image when a saved place has no photo", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "마이" }));
+    await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
+
+    expect(screen.getByLabelText("사진 없는 카페 사진 없음, 위치 미리보기")).toBeTruthy();
   });
 
   it("opens the profile editor from my page and saves the profile draft", async () => {
@@ -401,7 +414,19 @@ describe("home place search flow", () => {
         { place_id: "near-far", name: "조금 먼 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.570, lng: () => 127.080 } } },
         { place_id: "near-close", name: "가까운 카페", types: ["cafe"], vicinity: "서울 성동구", geometry: { location: { lat: () => 37.566, lng: () => 127.078 } } },
       ], "OK"));
-      getDetails = vi.fn((request: { placeId?: string }, callback: (result: unknown, status: string) => void) => callback(request.placeId === "near-close" ? { opening_hours: { isOpen: () => true, weekday_text: ["월요일: 09:00–20:00", "화요일: 09:00–20:00", "수요일: 09:00–20:00", "목요일: 09:00–20:00", "금요일: 09:00–20:00", "토요일: 10:00–18:00", "일요일: 휴무"] }, rating: 4.6, user_ratings_total: 235 } : { opening_hours: { isOpen: () => true }, rating: 4.6, user_ratings_total: 235 }, "OK"));
+      getDetails = vi.fn((request: { placeId?: string }, callback: (result: unknown, status: string) => void) => {
+        const isClose = request.placeId === "near-close";
+        callback({
+          place_id: request.placeId,
+          name: isClose ? "가까운 카페" : "조금 먼 카페",
+          types: ["cafe"],
+          formatted_address: "서울 성동구",
+          geometry: { location: { lat: () => isClose ? 37.566 : 37.570, lng: () => isClose ? 127.078 : 127.080 } },
+          opening_hours: isClose ? { isOpen: () => true, weekday_text: ["월요일: 09:00–20:00", "화요일: 09:00–20:00", "수요일: 09:00–20:00", "목요일: 09:00–20:00", "금요일: 09:00–20:00", "토요일: 10:00–18:00", "일요일: 휴무"] } : { isOpen: () => true },
+          rating: 4.6,
+          user_ratings_total: 235,
+        }, "OK");
+      });
     }
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -790,7 +815,7 @@ describe("home place search flow", () => {
 
     await user.click(screen.getByRole("button", { name: "마이" }));
     await user.click(screen.getAllByRole("button", { name: /내 장소/ })[0]);
-    await user.click(screen.getByRole("button", { name: /기록 관리/ }));
+    await user.click(screen.getAllByRole("button", { name: /기록 관리/ })[0]);
 
     expect(screen.getByRole("dialog", { name: "내 장소 기록 관리" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "테스트 저장 장소" })).toBeTruthy();
