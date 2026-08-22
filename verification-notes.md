@@ -1,5 +1,11 @@
 # Route 지도 안내 기능 검증 기록
 
+## 2026-08-22 — Claude Tailwind 팔레트·코스 지도 검색 추가
+
+- 사용자가 제공한 Tailwind 색상값 `primary #FF6891`, `primary.light #FFE8EF`, `primary.dark #E5527A`, `secondary #6BCCFF`, `secondary.light #EAF7FF`, 회색·페이퍼 표면을 Tailwind 4 `@theme` 토큰과 Route 전역 CSS 변수에 함께 반영했다. 주요 버튼·활성 카테고리·온보딩·진행 막대는 핑크 Primary, 지도 검색 진입 카드와 보조 표면은 페일 블루로 정리했다.
+- 코스 만들기 2단계에 **지도에서 장소 검색하기** 버튼을 추가했다. 이 버튼은 실제 Places 검색 화면으로 전환하며, 검색 결과를 선택하면 장소 상세를 거치지 않고 Day 1·10:00·60분·0원 기본값으로 일정에 추가한 뒤 코스 만들기 2단계로 복귀한다. 이미 일정에 있는 장소는 중복 추가하지 않는다.
+- 코스 만들기 검색 진입·검색 결과 선택·일정 복귀를 포함한 UI 회귀 테스트를 추가했다. `pnpm check`, 전체 Vitest **85개**, `pnpm build`를 통과했고, 390×844 모바일 지도 화면에서 핑크 활성 카테고리·지도·튜토리얼 레이아웃을 확인했다. 프로덕션 빌드에는 기존과 같은 초기 JavaScript 청크 크기 경고만 출력됐다.
+
 ## 2026-08-22 — 브랜드 재정비·코스 편집·Story 공유
 
 - 이전 Claude 웹사이트 기준의 `night / ink / pink / blue / mint / gold` 팔레트를 Route 전역 토큰에 반영했다. 글래스·반사·투명·광택 없이 제작한 매트 Route 경로 아이콘을 앱 favicon·Apple touch icon·로그인·홈 브랜드 마크에 적용했다.

@@ -887,6 +887,26 @@ describe("home place search flow", () => {
     expect(screen.getByText("9:16 이미지 다운로드")).toBeTruthy();
   });
 
+  it("opens map place search from course creation and returns after adding the selected place", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "코스" }));
+    await user.click(screen.getByRole("button", { name: "+ 새 코스" }));
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    const existingRow = Array.from(container.querySelectorAll<HTMLElement>(".route-draggable-place")).find((row) => row.textContent?.includes("서울숲"));
+    if (!existingRow) throw new Error("서울숲 일정 행을 찾을 수 없습니다.");
+    fireEvent.click(existingRow.querySelector("button") as HTMLButtonElement);
+    expect(screen.getByText("추가한 장소 3")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "지도에서 장소 검색하기" }));
+
+    expect(screen.getByRole("heading", { name: "장소 검색" })).toBeTruthy();
+    await user.click(screen.getAllByRole("button", { name: "서울숲" })[0]);
+
+    expect(await screen.findByRole("heading", { name: "코스 만들기" })).toBeTruthy();
+    expect(screen.getByText("추가한 장소 4")).toBeTruthy();
+  });
+
   it("shows the first-map tutorial, stores completion, and lets users reopen it from my page", async () => {
     const user = userEvent.setup();
     window.localStorage.removeItem("route-map-tutorial-completed");

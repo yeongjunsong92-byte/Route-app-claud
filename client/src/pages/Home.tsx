@@ -618,6 +618,7 @@ export default function Home() {
   const [selectedCourse, setSelectedCourse] = useState<Course>(emptyCourse);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
   const [courseStep, setCourseStep] = useState(1);
+  const [isCoursePlaceSearchActive, setIsCoursePlaceSearchActive] = useState(false);
   const [courseTitle, setCourseTitle] = useState("서울 데이트 코스");
   const [courseStartDate, setCourseStartDate] = useState("");
   const [courseEndDate, setCourseEndDate] = useState("");
@@ -679,6 +680,10 @@ export default function Home() {
   useEffect(() => () => {
     if (pinSelectionTimerRef.current !== null) window.clearTimeout(pinSelectionTimerRef.current);
   }, []);
+  useEffect(() => {
+    if (!isCoursePlaceSearchActive || screen !== "map") return;
+    returnToCoursePlaceDraft();
+  }, [isCoursePlaceSearchActive, screen]);
   const selectedCourseInput = useMemo(() => ({ courseId: selectedCourseId > 0 ? selectedCourseId : 1 }), [selectedCourseId]);
   const socialDiscoveryInput = useMemo(() => ({ query: socialSearchQuery.trim() || undefined }), [socialSearchQuery]);
   const socialDiscoveryQuery = trpc.people.discover.useQuery(socialDiscoveryInput, { enabled: isAuthenticated && ["friends", "user-search"].includes(screen) });
@@ -823,7 +828,16 @@ export default function Home() {
       setLivePlaces((current) => current.map((item) => item.id === place.id ? enriched : item));
     });
   };
-  const openPlace = (place: Place) => { setGalleryIndex(0); setSelectedPlace(place); setScreen("place-detail"); hydrateGooglePlaceDetails(place); };
+  const openPlace = (place: Place) => {
+    if (isCoursePlaceSearchActive) {
+      addPlaceToCourse(place);
+      return;
+    }
+    setGalleryIndex(0);
+    setSelectedPlace(place);
+    setScreen("place-detail");
+    hydrateGooglePlaceDetails(place);
+  };
   const captureMapReturnState = () => {
     const map = mainMapRef.current;
     const center = typeof map?.getCenter === "function" ? map.getCenter() : null;
@@ -1684,11 +1698,38 @@ export default function Home() {
     courseDragStartRef.current = null;
     setDraggedCourseIndex(null);
   };
-  const addPlaceToCourse = (place: Place) => {
-    setCoursePlaces((items) => items.some((item) => item.id === place.id) ? items : [...items, place]);
+  const addPlaceToCourse = (place: Place, returnToCourse = true) => {
+    if (coursePlaces.some((item) => item.id === place.id)) {
+      toast.message("이미 코스에 추가된 장소입니다.");
+      if (returnToCourse) setScreen("course-create");
+      return;
+    }
+    setCoursePlaces((items) => [...items, place]);
     setCourseItemDays((current) => ({ ...current, [place.id]: current[place.id] || 1 }));
     setCourseDurations((current) => ({ ...current, [place.id]: current[place.id] || "60" }));
+    setCourseTimes((current) => ({ ...current, [place.id]: current[place.id] || "10:00" }));
+    setCourseCosts((current) => ({ ...current, [place.id]: current[place.id] || "0" }));
+    setCourseMemos((current) => ({ ...current, [place.id]: current[place.id] || "" }));
     setCourseStep(2);
+    if (returnToCourse) {
+      setIsCoursePlaceSearchActive(false);
+      setSelectedTab("courses");
+      setScreen("course-create");
+      toast.success(`${place.name}을(를) 코스에 추가했습니다.`);
+    }
+  };
+  const openCoursePlaceSearch = () => {
+    setIsCoursePlaceSearchActive(true);
+    setQuery("");
+    setPlacePredictions([]);
+    setHasLiveSearch(false);
+    setLivePlaces([]);
+    setSelectedTab("map");
+    setScreen("search");
+  };
+  const returnToCoursePlaceDraft = () => {
+    setIsCoursePlaceSearchActive(false);
+    setSelectedTab("courses");
     setScreen("course-create");
   };
   const addSavedPlaceToCurrentCourse = (place: Place) => {
@@ -2006,7 +2047,7 @@ export default function Home() {
   const renderTravelModeSelector = () => <section className="route-travel-mode-selector" aria-label="이동 수단 선택"><div><span>TRAVEL MODE</span><strong>이동 수단</strong></div><div role="radiogroup" aria-label="코스 이동 수단">{(Object.keys(travelModeMeta) as TravelMode[]).map((mode) => { const Icon = travelModeMeta[mode].icon; return <button key={mode} role="radio" aria-checked={travelMode === mode} className={travelMode === mode ? "active" : ""} onClick={() => setTravelMode(mode)}><Icon size={15} />{travelModeMeta[mode].label}</button>; })}</div></section>;
   const renderCourseTravelSummary = () => coursePlaces.length > 1 ? <><>{renderTravelModeSelector()}</><section className="route-course-travel-summary" aria-live="polite" aria-label="순서 변경에 따른 예상 이동시간"><div className="route-course-travel-heading"><div><Navigation size={17} /><span><small>{travelModeMeta[travelMode].summary} · 현재 순서 예상 이동</small><strong>{formatMinutes(courseTravelMinutes)} · {formatDistance(courseTravelDistanceMeters)}</strong></span></div><small>장소 순서를 바꾸면 즉시 갱신됩니다.</small></div>{courseRouteSegments.map((segment, index) => <div className="route-course-travel-leg" key={`${segment.from}-${segment.to}-${index}`}><span>{index + 1} → {index + 2}</span><strong>{formatMinutes(segment.minutes)}</strong><small>{formatDistance(segment.distanceMeters)} · {segment.from}에서 {segment.to}</small></div>)}</section></> : null;
   const renderRouteRecommendation = () => coursePlaces.length > 2 ? <section className="route-optimization-card" aria-label="효율 경로 추천"><div className="route-optimization-heading"><span className="route-optimization-icon"><WandSparkles size={17} /></span><div><span>ROUTE RECOMMENDATION</span><h3>이동이 적은 순서를 추천해요</h3></div></div><section className="route-optimization-comparison" aria-label="추천 동선 전후 비교"><div><small>현재 순서</small><strong>{formatMinutes(courseTravelMinutes)}</strong><span>{formatDistance(courseTravelDistanceMeters)}</span></div><Navigation size={15} /><div className="recommended"><small>추천 순서</small><strong>{formatMinutes(recommendedTravelMinutes)}</strong><span>{formatDistance(recommendedTravelDistanceMeters)}</span></div></section>{routeRecommendationChanged ? <><p>현재 순서보다 <strong>{formatDistance(routeDistanceSaved)}</strong>, 약 <strong>{routeMinutesSaved}분</strong> 이동을 줄일 수 있어요.</p><div className="route-optimization-order">{recommendedCoursePlaces.map((place, index) => <span key={place.id}><b>{index + 1}</b>{place.name}</span>)}</div><div className="route-optimization-actions"><button onClick={applyRouteRecommendation}><WandSparkles size={15} /> 추천 순서 적용</button><button className="share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={15} /> 공유</button></div></> : <><p className="is-current"><Navigation size={15} /> 현재 순서가 추천 동선과 같습니다.</p><button className="route-optimization-current-share" aria-label="추천 동선 공유" onClick={() => void shareRecommendedRoute()}><Share2 size={14} /> 현재 동선 공유</button></>}</section> : null;
-  const renderCourseMapPlanner = () => coursePlaces.length > 1 ? <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section> : null;
+  const renderCourseMapPlanner = () => <section className="route-course-map-planner"><button className="route-course-map-search-entry" type="button" aria-label="지도에서 장소 검색하기" onClick={openCoursePlaceSearch}><Search size={16} /><span><small>MAP PLACE SEARCH</small><strong>지도에서 장소 검색하기</strong><em>검색 결과를 누르면 코스에 바로 추가돼요.</em></span><ChevronRight size={17} /></button>{coursePlaces.length > 1 && <><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</>}</section>;
   const renderMap = (compact = false, enablePlacePreview = false) => <div className={`${compact ? "route-map-box compact" : "route-map-box"} route-map-box-with-fallback`}><MapView className="route-real-map" initialCenter={activeMapCenter} initialZoom={15} onMapReady={enablePlacePreview ? handleMainMapReady : undefined} onMapClick={enablePlacePreview && screen === "map" ? () => { setSheetMode("hidden"); setIsMapFullscreen(true); } : undefined} fallback={<MapFallback markers={enablePlacePreview ? visibleMapPlaces : filteredPlaces} selectedId={enablePlacePreview ? selectedMapPinId || mapPreviewPlace?.id : undefined} onSelect={enablePlacePreview ? (place) => openPlaceFromMap(place) : undefined} />}/>{enablePlacePreview && <div className="route-map-floating-controls"><button aria-label="현재 위치" onClick={() => moveToCurrentLocation()}><LocateFixed size={18} /></button><button aria-label="지역 선택" onClick={() => setIsRegionPickerOpen(true)}><MapPin size={18} /></button><button aria-label="장소 검색" onClick={() => setScreen("search")}><SlidersHorizontal size={18} /></button>{isMapFullscreen && <button aria-label="전체 지도 닫기" onClick={() => { setIsMapFullscreen(false); setSheetMode("peek"); }}><X size={18} /></button>}</div>}{compact && screen === "course-create" && courseStep === 2 && <section className="route-course-map-planner"><CourseRouteMap key={`draft-course-route-${coursePlaces.map((place) => place.id).join("-")}`} stops={courseStops} compact />{renderCourseTravelSummary()}{renderRouteRecommendation()}</section>}</div>;
 
   const renderLocationPermissionHelp = () => <Dialog open={isLocationPermissionHelpOpen} onOpenChange={setIsLocationPermissionHelpOpen}><DialogContent className="route-location-permission-dialog"><DialogHeader><DialogTitle>현재 위치 권한이 필요합니다</DialogTitle><DialogDescription>주변 장소와 거리를 정확히 보여주려면 위치 접근을 허용해 주세요. 권한을 허용하지 않아도 지역을 직접 선택할 수 있습니다.</DialogDescription></DialogHeader><div className="route-location-permission-steps"><div><b>1</b><span>브라우저 주소창 왼쪽의 자물쇠 또는 사이트 정보 아이콘을 누르세요.</span></div><div><b>2</b><span><strong>위치</strong> 권한을 <strong>허용</strong>으로 변경한 뒤 Route를 새로고침하세요.</span></div><div><b>3</b><span>모바일에서는 기기 설정의 앱 권한에서 위치 접근을 허용할 수 있습니다.</span></div></div><DialogFooter><button className="route-dialog-secondary" onClick={() => { setIsLocationPermissionHelpOpen(false); setIsRegionPickerOpen(true); }}><MapPin size={14} /> 지역 선택</button><button className="route-dialog-primary" onClick={() => { setIsLocationPermissionHelpOpen(false); moveToCurrentLocation(); }}>다시 시도</button></DialogFooter></DialogContent></Dialog>;

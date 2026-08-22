@@ -1,26 +1,46 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
+@theme {
+  --color-primary: #ff6891;
+  --color-primary-light: #ffe8ef;
+  --color-primary-dark: #e5527a;
+  --color-secondary: #6bccff;
+  --color-secondary-light: #eaf7ff;
+  --color-gray-800: #2b2b2b;
+  --color-gray-600: #757575;
+  --color-gray-300: #e0e0e0;
+  --color-paper: #fafafa;
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --radius-xl2: 1.25rem;
+  --shadow-card: 0 2px 12px rgba(43, 43, 43, .06);
+  --shadow-sheet: 0 -4px 24px rgba(43, 43, 43, .12);
+}
+
 :root {
-  --route-night: #0b0a12;
-  --route-ink: #f7f4f8;
-  --route-muted-ink: #a7a0b1;
-  --route-soft: #736d7e;
-  --route-pink: #e7a7c3;
-  --route-pink-hot: #f5c4da;
-  --route-blue: #8fbcff;
-  --route-mint: #8bd9ca;
-  --route-gold: #f0c982;
-  --route-bg: #f7f4f8;
+  /* Claude Tailwind palette */
+  --route-night: #2b2b2b;
+  --route-ink: #fafafa;
+  --route-muted-ink: #757575;
+  --route-soft: #757575;
+  --route-pink: #ff6891;
+  --route-pink-hot: #ffe8ef;
+  --route-blue: #6bccff;
+  --route-mint: #6bccff;
+  --route-gold: #ff6891;
+  --route-bg: #fafafa;
   --route-paper: #ffffff;
-  --route-line: #e5e0e8;
-  --route-text: #0b0a12;
-  --route-muted: #736d7e;
-  --route-purple: #564276;
-  --route-purple-dark: #3f2f5b;
-  --route-purple-soft: #f0ebf4;
-  --route-font: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --route-display: "Playfair Display", Georgia, serif;
+  --route-line: #e0e0e0;
+  --route-text: #2b2b2b;
+  --route-muted: #757575;
+  --route-purple: #ff6891;
+  --route-purple-dark: #e5527a;
+  --route-purple-soft: #ffe8ef;
+  --route-secondary-soft: #eaf7ff;
+  --route-card-shadow: 0 2px 12px rgba(43, 43, 43, .06);
+  --route-sheet-shadow: 0 -4px 24px rgba(43, 43, 43, .12);
+  --route-font: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --route-display: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 /* 실제 여행 경험 공유 */
@@ -68,14 +88,14 @@
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-body { margin: 0; background: #e8e3e8; color: var(--route-text); font-family: var(--route-font); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--route-bg); color: var(--route-text); font-family: var(--route-font); -webkit-font-smoothing: antialiased; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .5; }
 img { display: block; max-width: 100%; }
 
-.route-app-shell { min-height: 100vh; display: flex; justify-content: center; background: #e8e3e8; }
-.route-phone { position: relative; width: 100%; max-width: 412px; min-height: 100vh; overflow: hidden; background: var(--route-bg); box-shadow: 0 0 36px rgba(30, 28, 23, .12); }
+.route-app-shell { min-height: 100vh; display: flex; justify-content: center; background: var(--route-bg); }
+.route-phone { position: relative; width: 100%; max-width: 412px; min-height: 100vh; overflow: hidden; background: var(--route-bg); box-shadow: var(--route-card-shadow); }
 .route-status-bar { height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: var(--route-paper); color: #333; font-size: 11px; font-weight: 700; }
 .route-status-icons { letter-spacing: -1px; font-size: 9px; }
 .route-loading, .route-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--route-bg); text-align: center; }
@@ -265,3 +285,26 @@ img { display: block; max-width: 100%; }
 .route-course-visibility { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin: 13px 0 4px; padding: 10px; border: 1px solid #e3def2; border-radius: 13px; background: #faf9ff; }.route-course-visibility legend { grid-column: 1 / -1; width: 100%; padding: 0; color: #70628d; font-size: 9px; font-weight: 800; }.route-course-visibility button { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; min-height: 54px; padding: 9px; border: 1px solid #e7e2ef; border-radius: 10px; background: #fff; color: #716b7d; text-align: left; }.route-course-visibility button.active { border-color: #6351dd; background: #f2efff; box-shadow: inset 0 0 0 1px rgba(99,81,221,.12); color: #4f3fc0; }.route-course-visibility strong { font-size: 10px; }.route-course-visibility small { color: #958fa1; font-size: 8px; line-height: 1.35; }.route-course-visibility button.active small { color: #7367aa; }
 .route-share-image-picker { display: grid; gap: 11px; margin: 13px 0; padding: 14px; border: 1px solid #e3ddf3; border-radius: 15px; background: linear-gradient(135deg,#fbfaff,#f5f2ff); }.route-share-image-picker > div:first-child > span { display: block; color: #7868bd; font-size: 8px; font-weight: 800; letter-spacing: .1em; }.route-share-image-picker h3 { margin: 4px 0 3px; color: #373044; font-size: 14px; }.route-share-image-picker p { margin: 0; color: #827b90; font-size: 9px; line-height: 1.45; }.route-course-photo-upload-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding-top: 1px; }.route-course-photo-upload { position: relative; display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 10px; border-radius: 10px; background: #eae5ff; color: #5d4dc3; font-size: 10px; font-weight: 800; cursor: pointer; }.route-course-photo-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }.route-course-photo-upload:has(input:disabled) { opacity: .55; cursor: not-allowed; }.route-course-photo-upload-row small { color: #90899d; font-size: 8px; text-align: right; }.route-share-image-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }.route-share-image-options article { position: relative; overflow: hidden; border: 1px solid #e6e0f1; border-radius: 12px; background: #fff; }.route-share-image-options article.active { border-color: #6351dd; box-shadow: 0 0 0 2px rgba(99,81,221,.12); }.route-share-image-options article > button:first-child { display: flex; width: 100%; min-width: 0; flex-direction: column; padding: 0; border: 0; background: transparent; color: #47414f; text-align: left; }.route-share-image-options article img { width: 100%; height: 84px; object-fit: cover; }.route-share-image-options article span { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding: 7px 8px 8px; }.route-share-image-options article strong { overflow: hidden; color: #443d4e; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.route-share-image-options article small { overflow: hidden; color: #908998; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }.route-share-image-options article b { position: absolute; top: 6px; left: 6px; padding: 3px 6px; border-radius: 99px; background: #6351dd; color: #fff; font-size: 8px; }.route-course-photo-remove { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid rgba(255,255,255,.86); border-radius: 50%; background: rgba(43,39,51,.72); color: #fff; box-shadow: 0 2px 8px rgba(32,29,40,.2); }.route-course-photo-remove:active { transform: scale(.94); }
 .route-course-upload-progress { display: grid; gap: 7px; padding: 10px; border: 1px solid #e5dfec; border-radius: 11px; background: rgba(255,255,255,.78); }.route-course-upload-progress > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.route-course-upload-progress strong { color: var(--route-text); font-size: 10px; }.route-course-upload-progress > div:first-child span { color: var(--route-muted); font-size: 8px; }.route-course-upload-progress-track { height: 6px; overflow: hidden; border-radius: 99px; background: #ebe7ef; }.route-course-upload-progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--route-mint); transition: width .2s cubic-bezier(.23,1,.32,1); }.route-course-upload-task-list { display: grid; gap: 4px; }.route-course-upload-task-list article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 25px; color: var(--route-muted); }.route-course-upload-task-list article > span { color: var(--route-purple); font-size: 8px; font-weight: 800; }.route-course-upload-task-list article.is-success > span { color: #4c8b73; }.route-course-upload-task-list article.is-error > span { color: #c16379; }.route-course-upload-task-list article strong { overflow: hidden; color: #514b59; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }.route-course-upload-task-list small { color: #9992a0; font-size: 8px; text-align: right; }.route-course-upload-task-list button { min-height: 23px; padding: 0 7px; border: 1px solid #e0ccd3; border-radius: 7px; background: #fff8fa; color: #b6506d; font-size: 8px; font-weight: 800; }
+
+/* Claude Tailwind palette: primary #FF6891, secondary #6BCCFF, paper #FAFAFA */
+.route-status-bar { background: var(--route-paper); color: var(--route-text); }
+.route-screen, .route-list-screen, .route-course-create, .route-search-screen, .route-detail-screen { background: var(--route-bg); }
+.route-screen-header, .route-map-sheet, .route-save-sheet, .route-course-picker, .route-course-share-sheet { background: var(--route-paper); box-shadow: var(--route-sheet-shadow); }
+.route-bottom-action > button:not(.secondary), .route-header-add, .route-course-visibility button.active, .route-optimization-card .route-optimization-actions button:not(.share), .route-optimization-card > button, .route-navigation-origin-input button { background: var(--route-pink); color: #fff; }
+.route-bottom-action > button:not(.secondary):hover, .route-header-add:hover { background: var(--route-purple-dark); }
+.route-bottom-action > button.secondary { background: var(--route-pink-hot); color: var(--route-purple-dark); }
+.route-step-indicator span.active, .route-filter-row button.active, .route-nearby-category-picker [role="tab"].active, .route-map-category-bar .route-filter-row button.active { background: var(--route-pink); color: #fff; }
+.route-map-category-toggle, .route-nearby-category-heading, .route-discovery-controls button, .route-course-visibility, .route-share-image-picker, .route-course-travel-heading { border-color: var(--route-line); background: var(--route-paper); }
+.route-discovery-controls button.active, .route-course-visibility button.active, .route-share-image-options article.active { border-color: var(--route-pink); box-shadow: inset 0 0 0 1px rgba(255,104,145,.14); }
+.route-course-visibility button.active, .route-share-image-options article.active { background: var(--route-pink-hot); color: var(--route-purple-dark); }
+.route-course-photo-upload, .route-optimization-card, .route-course-travel-heading { background: var(--route-secondary-soft); color: var(--route-text); }
+.route-course-photo-upload, .route-course-photo-upload-row + small { color: var(--route-purple-dark); }
+.route-share-image-options article b, .route-optimization-icon, .route-optimization-order b { background: var(--route-pink); }
+.route-course-upload-progress-track { background: var(--route-secondary-soft); }
+.route-course-upload-progress-track span { background: var(--route-pink); }
+.route-route-line-fallback, .route-distance-map-line { border-color: var(--route-pink); }
+.route-route-stop-fallback, .route-distance-map-stop.origin { background: var(--route-pink); }
+.route-distance-map-stop.destination { background: var(--route-blue); }
+.route-map-tutorial-progress span.active, .route-map-tutorial-actions button.primary, .route-map-tutorial-icon { background: var(--route-pink); color: #fff; }
+.route-map-tutorial-actions button.primary { box-shadow: 0 7px 16px rgba(255,104,145,.28); }
+.route-course-map-search-entry { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 68px; margin: 12px 16px 14px; padding: 11px 12px; border: 1px solid #bfe8ff; border-radius: 1.25rem; background: var(--route-secondary-light); box-shadow: var(--route-card-shadow); color: var(--route-text); text-align: left; }.route-course-map-search-entry > svg:first-child { display: inline-flex; width: 34px; height: 34px; padding: 8px; border-radius: 11px; background: var(--route-pink); color: #fff; }.route-course-map-search-entry > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }.route-course-map-search-entry small { color: var(--route-purple-dark); font-size: 8px; font-weight: 800; letter-spacing: .09em; }.route-course-map-search-entry strong { color: var(--route-text); font-size: 12px; }.route-course-map-search-entry em { overflow: hidden; color: var(--route-muted); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }.route-course-map-search-entry > svg:last-child { color: var(--route-purple-dark); }.route-course-map-search-entry:active { transform: scale(.98); }
