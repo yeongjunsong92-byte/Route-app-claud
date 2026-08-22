@@ -287,7 +287,7 @@ function PlaceRow({ place, onClick, onSave, distanceLabel = "350m" }: { place: P
 
 function StepIndicator({ step }: { step: number }) { return <div className="route-step-indicator">{[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>; }
 
-type RouteStop = { name: string; lat: number; lng: number };
+type RouteStop = { name: string; lat: number; lng: number; progressStatus?: "completed" | "current" | "upcoming" };
 
 type RouteSegment = { from: string; to: string; minutes: number; distanceMeters: number };
 
@@ -409,10 +409,10 @@ function calculateCourseDayCount(startDate: string, endDate: string) {
 
 function RouteMapFallback({ stops }: { stops: RouteStop[] }) {
   const segments = estimateRouteSegments(stops);
-  return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}{segments.map((segment, index) => <span className={`route-route-time-fallback time-${index + 1}`} key={`${segment.to}-time`}>{segment.minutes}분</span>)}<div className="route-map-attribution">Route route preview</div></div>;
+  return <div className="route-map-fallback route-route-fallback"><div className="route-map-water" /><div className="route-map-road road-a" /><div className="route-map-road road-b" /><div className="route-map-road road-c" /><div className="route-route-line-fallback" />{stops.map((stop, index) => <span className={`route-route-stop-fallback stop-${index + 1} is-${stop.progressStatus || "upcoming"}`} key={`${stop.name}-${index}`}>{index + 1}</span>)}{segments.map((segment, index) => <span className={`route-route-time-fallback time-${index + 1}`} key={`${segment.to}-time`}>{segment.minutes}분</span>)}<div className="route-map-attribution">Route route preview</div></div>;
 }
 
-function CourseRouteMap({ stops, compact = false, travelMode: requestedTravelMode }: { stops: RouteStop[]; compact?: boolean; travelMode?: TravelMode }) {
+function CourseRouteMap({ stops, compact = false, travelMode: requestedTravelMode, contextPlaces = [] }: { stops: RouteStop[]; compact?: boolean; travelMode?: TravelMode; contextPlaces?: Place[] }) {
   const travelMode = requestedTravelMode || useContext(TravelModeContext);
   const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const routeDecorationRefs = useRef<google.maps.Marker[]>([]);
@@ -433,12 +433,26 @@ function CourseRouteMap({ stops, compact = false, travelMode: requestedTravelMod
   const renderRouteDecorations = useCallback((map: google.maps.Map, legs?: google.maps.DirectionsLeg[]) => {
     clearRouteDecorations();
     const decorations: google.maps.Marker[] = [];
+    contextPlaces.filter((place) => !stops.some((stop) => stop.name === place.name || (stop.lat === place.lat && stop.lng === place.lng))).forEach((place) => {
+      decorations.push(new google.maps.Marker({
+        map,
+        position: { lat: place.lat, lng: place.lng },
+        title: place.name,
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#7d8790", fillOpacity: 0.78, strokeColor: "#ffffff", strokeOpacity: 1, strokeWeight: 1.5, scale: 7 },
+        zIndex: 6,
+      }));
+    });
     stops.forEach((stop, index) => {
+      const pinStyle = stop.progressStatus === "completed"
+        ? { fillColor: "#8fb8d5", fillOpacity: 0.7, strokeColor: "#ffffff", labelColor: "#ffffff" }
+        : stop.progressStatus === "current"
+          ? { fillColor: "#ff6891", fillOpacity: 1, strokeColor: "#ffffff", labelColor: "#ffffff" }
+          : { fillColor: "#168ded", fillOpacity: 1, strokeColor: "#ffffff", labelColor: "#ffffff" };
       decorations.push(new google.maps.Marker({
         map,
         position: { lat: stop.lat, lng: stop.lng },
-        label: { text: String(index + 1), color: "#ffffff", fontSize: "12px", fontWeight: "700" },
-        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: "#6351dd", fillOpacity: 1, strokeColor: "#ffffff", strokeOpacity: 1, strokeWeight: 2, scale: 14 },
+        label: { text: String(index + 1), color: pinStyle.labelColor, fontSize: "12px", fontWeight: "700" },
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: pinStyle.fillColor, fillOpacity: pinStyle.fillOpacity, strokeColor: pinStyle.strokeColor, strokeOpacity: 1, strokeWeight: 2, scale: stop.progressStatus === "current" ? 16 : 14 },
         zIndex: 20 + index,
       }));
     });
@@ -466,7 +480,7 @@ function CourseRouteMap({ stops, compact = false, travelMode: requestedTravelMod
       }));
     });
     routeDecorationRefs.current = decorations;
-  }, [clearRouteDecorations, stops, travelMode]);
+  }, [clearRouteDecorations, contextPlaces, stops, travelMode]);
   const handleMapReady = useCallback((map: google.maps.Map) => {
     if (stops.length < 2 || !window.google?.maps) return;
     rendererRef.current?.setMap(null);
@@ -634,6 +648,9 @@ export default function Home() {
   const [courseItemDays, setCourseItemDays] = useState<Record<string, number>>({ p1: 1, p2: 1, p3: 1, p4: 1 });
   const [courseDurations, setCourseDurations] = useState<Record<string, string>>({ p1: "60", p2: "60", p3: "60", p4: "60" });
   const [courseMemos, setCourseMemos] = useState<Record<string, string>>({});
+  const [activeCompletedPlaceIds, setActiveCompletedPlaceIds] = useState<string[]>([]);
+  const [activeCourseMapMode, setActiveCourseMapMode] = useState<"course" | "all">("course");
+  const [activeCourseBackScreen, setActiveCourseBackScreen] = useState<Screen>("home");
   const [draggedCourseIndex, setDraggedCourseIndex] = useState<number | null>(null);
   const [activeDetailDay, setActiveDetailDay] = useState(1);
   const [profileName, setProfileName] = useState(user?.name || "여행자");
@@ -1508,6 +1525,9 @@ export default function Home() {
     }
     let courseId = Number(selectedCourse.id);
     const isStartingSavedCourse = screen === "public-course-detail";
+    setActiveCourseBackScreen(isStartingSavedCourse ? "public-course-detail" : "course-detail");
+    setActiveCompletedPlaceIds([]);
+    setActiveCourseMapMode("course");
     try {
       if (isStartingSavedCourse) {
         const cloned = await clonePublicCourseMutation.mutateAsync({ courseId });
@@ -1541,6 +1561,9 @@ export default function Home() {
   };
   const startListedCourse = async (course: Course) => {
     const courseId = Number(course.id);
+    setActiveCourseBackScreen("home");
+    setActiveCompletedPlaceIds([]);
+    setActiveCourseMapMode("course");
     setSelectedCourse({ ...course, status: "active" });
     setCourseTitle(course.title);
     setCourseStartDate(toDateInputValue(course.startDate));
@@ -1565,7 +1588,7 @@ export default function Home() {
   const sharedCourseDateRange = formatCourseDateRange((selectedCourseQuery.data as any)?.startDate || selectedCourse.startDate, (selectedCourseQuery.data as any)?.endDate || selectedCourse.endDate);
   const isSelectedCoursePublic = Boolean((selectedCourseQuery.data as any)?.isPublic ?? (selectedCourse as any).isPublic);
   const selectedCourseStatus = (selectedCourseQuery.data as any)?.status || selectedCourse.status || "planned";
-  const renderCourseStartAction = () => <section className="route-course-start-action" aria-label="코스 시작"><div><span>{selectedCourseStatus === "active" ? "ROUTE IN PROGRESS" : "READY TO EXPLORE"}</span><strong>{selectedCourseStatus === "active" ? "진행 중인 코스를 이어가세요" : "이 코스를 지금 시작할까요?"}</strong><small>{screen === "public-course-detail" && selectedCourseStatus !== "active" ? "저장한 코스는 내 코스로 복제한 뒤 시작됩니다." : "시간·순서·메모를 가진 진행 화면으로 이동합니다."}</small></div><button type="button" onClick={() => selectedCourseStatus === "active" ? setScreen("active-course") : void startSelectedCourse()} disabled={updateCourseMutation.isPending || clonePublicCourseMutation.isPending || selectedCourseQuery.isLoading}><Navigation size={16} /> {selectedCourseStatus === "active" ? "진행 화면" : "코스 시작하기"}</button></section>;
+  const renderCourseStartAction = () => <section className="route-course-start-action" aria-label="코스 시작"><div><span>{selectedCourseStatus === "active" ? "ROUTE IN PROGRESS" : "READY TO EXPLORE"}</span><strong>{selectedCourseStatus === "active" ? "진행 중인 코스를 이어가세요" : "이 코스를 지금 시작할까요?"}</strong><small>{screen === "public-course-detail" && selectedCourseStatus !== "active" ? "저장한 코스는 내 코스로 복제한 뒤 시작됩니다." : "시간·순서·메모를 가진 진행 화면으로 이동합니다."}</small></div><button type="button" onClick={() => selectedCourseStatus === "active" ? (setActiveCourseBackScreen(screen), setActiveCourseMapMode("course"), setScreen("active-course")) : void startSelectedCourse()} disabled={updateCourseMutation.isPending || clonePublicCourseMutation.isPending || selectedCourseQuery.isLoading}><Navigation size={16} /> {selectedCourseStatus === "active" ? "진행 화면" : "코스 시작하기"}</button></section>;
   const sharedCourseId = Number(selectedCourse.id);
   const courseShareLink = Number.isInteger(sharedCourseId) && sharedCourseId > 0
     ? `${window.location.origin}/share/course/${sharedCourseId}`
@@ -2274,11 +2297,19 @@ export default function Home() {
       const fallback = coursePlaces.find((place) => place.name === item.name) || mockPlaces.find((place) => place.name === item.name) || mockPlaces[index % mockPlaces.length];
       return { ...fallback, id: persisted?.placeId || fallback.id, name: item.name, address: item.address || persisted?.address || fallback.address, image: item.image || persisted?.imageUrl || fallback.image, lat: persisted?.lat ?? fallback.lat, lng: persisted?.lng ?? fallback.lng, hours: persisted?.hours || fallback.hours } satisfies Place;
     });
-    const progressStops = progressPlaces.map((place) => ({ name: place.name, lat: place.lat, lng: place.lng }));
-    const nextPlace = progressPlaces[0];
+    const nextPlaceIndex = progressPlaces.findIndex((place) => !activeCompletedPlaceIds.includes(place.id));
+    const progressStops = progressPlaces.map((place, index) => ({ name: place.name, lat: place.lat, lng: place.lng, progressStatus: activeCompletedPlaceIds.includes(place.id) ? "completed" as const : index === nextPlaceIndex ? "current" as const : "upcoming" as const }));
+    const nextPlace = nextPlaceIndex >= 0 ? progressPlaces[nextPlaceIndex] : undefined;
+    const nextItem = nextPlaceIndex >= 0 ? progressItems[nextPlaceIndex] : undefined;
+    const progressContextPlaces = activeCourseMapMode === "all" ? visibleMapPlaces : [];
+    const completeCurrentPlace = () => {
+      if (!nextPlace) return;
+      setActiveCompletedPlaceIds((current) => current.includes(nextPlace.id) ? current : [...current, nextPlace.id]);
+      toast.success(`${nextPlace.name} 방문을 완료했어요.`);
+    };
     const activeTitle = (selectedCourseQuery.data as any)?.title || selectedCourse.title || courseTitle || "나의 여행 코스";
     const activeDateRange = formatCourseDateRange((selectedCourseQuery.data as any)?.startDate || selectedCourse.startDate || courseStartDate, (selectedCourseQuery.data as any)?.endDate || selectedCourse.endDate || courseEndDate);
-    return <div className="route-screen route-active-course"><ScreenHeader title="Route" onBack={() => setTab("home")} right={<button aria-label="코스 공유" onClick={() => setIsCourseShareOpen(true)}><Bookmark size={18} /></button>} /><section className="route-active-course-map"><div className="route-active-course-map-heading"><span>ON ROUTE</span><h2>{activeTitle}</h2><p>{activeDateRange} · 장소 {progressItems.length}곳</p></div><CourseRouteMap key={`active-course-${selectedCourse.id}-${progressStops.map((stop) => stop.name).join("-")}`} stops={progressStops} /><div className="route-active-route-order" aria-label="코스 순서">{progressItems.slice(0, 5).map((item, index) => <span key={`${item.name}-${index}`}><b>{index + 1}</b>{item.name}</span>)}</div></section><section className="route-active-next-place"><div><span>NEXT PLACE</span><strong>{nextPlace?.name || "다음 장소를 준비 중이에요"}</strong><small>{nextPlace ? `${progressItems[0]?.time || "10:00"} · ${nextPlace.address}` : "코스에 장소를 추가해 보세요."}</small></div><button disabled={!nextPlace} onClick={() => nextPlace && openPlaceNavigation(nextPlace)}><Navigation size={16} /> 길안내</button></section><section className="route-active-course-timeline"><div className="route-active-timeline-heading"><div><span>ITINERARY</span><h2>시간, 순서, 실제 메모까지</h2></div><button onClick={() => { setCourseStep(2); setSelectedTab("courses"); setScreen("edit-course"); }}><Pencil size={14} /> 수정</button></div>{progressItems.map((item, index) => { const place = progressPlaces[index]; return <button className={index === 0 ? "is-next" : ""} key={`${item.name}-${index}`} onClick={() => place && openPlace(place)}><time>{item.time}</time><span className="route-active-timeline-line"><b>{index + 1}</b></span><div><strong>{item.name}</strong><small>{courseMemos[place?.id || ""] || `${place?.address || "여행 장소"} · ${formatTotalDuration(item.durationMinutes || 60)}`}</small></div><em>{place?.category || "장소"}</em></button>; })}</section><div className="route-active-course-actions"><button className="secondary" onClick={() => setScreen("course-detail")}>코스 상세</button><button onClick={() => nextPlace && openPlaceNavigation(nextPlace)} disabled={!nextPlace}><Navigation size={16} /> 다음 장소로</button></div></div>;
+    return <div className="route-screen route-active-course"><ScreenHeader title="Route" onBack={() => setScreen(activeCourseBackScreen)} right={<button aria-label="코스 공유" onClick={() => setIsCourseShareOpen(true)}><Bookmark size={18} /></button>} /><section className="route-active-course-map"><div className="route-active-course-map-heading"><span>ON ROUTE</span><h2>{activeTitle}</h2><p>{activeDateRange} · 장소 {progressItems.length}곳</p></div><div className="route-active-map-mode" role="tablist" aria-label="진행 지도 표시"><button role="tab" aria-selected={activeCourseMapMode === "course"} className={activeCourseMapMode === "course" ? "active" : ""} onClick={() => setActiveCourseMapMode("course")}>코스 장소만</button><button role="tab" aria-selected={activeCourseMapMode === "all"} className={activeCourseMapMode === "all" ? "active" : ""} onClick={() => setActiveCourseMapMode("all")}>전체 지도</button></div><CourseRouteMap key={`active-course-${selectedCourse.id}-${activeCourseMapMode}-${progressStops.map((stop) => `${stop.name}-${stop.progressStatus}`).join("-")}`} stops={progressStops} contextPlaces={progressContextPlaces} /><div className="route-active-map-legend"><span><i className="completed" />완료</span><span><i className="current" />현재</span><span><i className="upcoming" />미방문</span>{activeCourseMapMode === "all" && <span><i className="nearby" />주변 장소</span>}</div><div className="route-active-route-order" aria-label="코스 순서">{progressItems.slice(0, 5).map((item, index) => <span className={progressStops[index]?.progressStatus} key={`${item.name}-${index}`}><b>{index + 1}</b>{item.name}</span>)}</div></section><section className="route-active-next-place"><div><span>{nextPlace ? "NEXT PLACE" : "ALL DONE"}</span><strong>{nextPlace?.name || "오늘의 코스를 모두 완료했어요"}</strong><small>{nextPlace ? `${nextItem?.time || "10:00"} · ${nextPlace.address}` : "기록을 남기거나 코스 상세에서 일정을 확인해 보세요."}</small></div>{nextPlace && <div className="route-active-next-actions"><button className="complete" onClick={completeCurrentPlace}>완료</button><button onClick={() => openPlaceNavigation(nextPlace)}><Navigation size={16} /> 길안내</button></div>}</section><section className="route-active-course-timeline"><div className="route-active-timeline-heading"><div><span>ITINERARY</span><h2>시간, 순서, 실제 메모까지</h2></div><button onClick={() => { setCourseStep(2); setSelectedTab("courses"); setScreen("edit-course"); }}><Pencil size={14} /> 수정</button></div>{progressItems.map((item, index) => { const place = progressPlaces[index]; const status = progressStops[index]?.progressStatus || "upcoming"; return <button className={`is-${status}`} key={`${item.name}-${index}`} onClick={() => place && openPlace(place)}><time>{item.time}</time><span className="route-active-timeline-line"><b>{index + 1}</b></span><div><strong>{item.name}</strong><small>{courseMemos[place?.id || ""] || `${place?.address || "여행 장소"} · ${formatTotalDuration(item.durationMinutes || 60)}`}</small></div><em>{status === "completed" ? "완료" : status === "current" ? "현재" : "미방문"}</em></button>; })}</section><div className="route-active-course-actions"><button className="secondary" onClick={() => setScreen("course-detail")}>코스 상세</button><button onClick={() => nextPlace && openPlaceNavigation(nextPlace)} disabled={!nextPlace}><Navigation size={16} /> 다음 장소로</button></div></div>;
   };
 
   const renderFriends = () => {
@@ -2340,8 +2371,8 @@ export default function Home() {
   else if (screen === "data-guide") content = renderDataGuide();
   else if (screen === "mypage") content = renderMyPage();
   else if (screen === "active-course") content = renderActiveCourse();
-  else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-active-trip"><div><span>{courseStatusLabel[courseStatus].toUpperCase()}</span><h2>{courseTitle || "나의 여행 코스"}</h2><p>{formatCourseDateRange(courseStartDate, courseEndDate)} · 다음 일정 {courseTimes[coursePlaces[0]?.id] || "10:00"}</p><small>{courseStatusLabel[courseStatus]} · 장소 {coursePlaces.length}곳 · 지금 여행을 이어가세요.</small></div><button onClick={() => setScreen("active-course")}>코스 보기 <ChevronRight size={15} /></button></section><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
+  else content = <div className="route-screen route-home"><header className="route-home-brand-header"><RouteBrandMark compact /><button onClick={() => setTab("mypage")} aria-label="마이페이지"><User size={18} /></button></header><button className="route-home-search" onClick={() => { setSelectedTab("map"); setScreen("search"); }} aria-label="장소 검색"><Search size={18} /><span>어디로 떠나볼까요?</span><ChevronRight size={16} /></button><section className="route-home-active-trip"><div><span>{courseStatusLabel[courseStatus].toUpperCase()}</span><h2>{courseTitle || "나의 여행 코스"}</h2><p>{formatCourseDateRange(courseStartDate, courseEndDate)} · 다음 일정 {courseTimes[coursePlaces[0]?.id] || "10:00"}</p><small>{courseStatusLabel[courseStatus]} · 장소 {coursePlaces.length}곳 · 지금 여행을 이어가세요.</small></div><button onClick={() => { setActiveCourseBackScreen("home"); setActiveCompletedPlaceIds([]); setActiveCourseMapMode("course"); setScreen("active-course"); }}>코스 보기 <ChevronRight size={15} /></button></section><section className="route-home-places"><div className="route-home-section-heading"><div><span>MY PLACES</span><h3>최근 저장한 장소</h3></div><button onClick={() => { setSelectedTab("mypage"); setScreen("my-places"); }}>전체보기 <ChevronRight size={14} /></button></div>{mockPlaces.slice(0, 3).map((place) => <PlaceRow key={place.id} place={place} onClick={() => openPlace(place)} onSave={() => openSaveSheet(place)} />)}</section></div>;
 
   const homeStartableCourse = ownedCourses.find((course) => course.status === "planned") || ownedCourses.find((course) => course.status === "active");
-  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && renderCourseStartAction()}{screen === "home" && homeStartableCourse && <button className="route-home-course-start" onClick={() => homeStartableCourse.status === "active" ? (setSelectedCourse(homeStartableCourse), setScreen("active-course")) : void startListedCourse(homeStartableCourse)} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>{homeStartableCourse.status === "active" ? "진행 중인 코스" : "예정 코스"}</small><strong>{homeStartableCourse.status === "active" ? "코스 이어가기" : "코스 시작하기"}</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{renderNaverNavigationConfirmSheet()}{renderNaverInstallHelpSheet()}{renderRecentDestinationManager()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
+  return <TravelModeContext.Provider value={travelMode}><div className="route-app-shell"><div className="route-phone"><StatusBar /><AnimatePresence mode="wait" initial={false}><motion.div key={screen} className="route-screen-transition" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>{content}</motion.div></AnimatePresence>{["course-detail", "public-course-detail"].includes(screen) && renderCourseStartAction()}{screen === "home" && homeStartableCourse && <button className="route-home-course-start" onClick={() => homeStartableCourse.status === "active" ? (setActiveCourseBackScreen("home"), setActiveCompletedPlaceIds([]), setActiveCourseMapMode("course"), setSelectedCourse(homeStartableCourse), setScreen("active-course")) : void startListedCourse(homeStartableCourse)} disabled={startCourseMutation.isPending}><Navigation size={16} /><span><small>{homeStartableCourse.status === "active" ? "진행 중인 코스" : "예정 코스"}</small><strong>{homeStartableCourse.status === "active" ? "코스 이어가기" : "코스 시작하기"}</strong></span><ChevronRight size={17} /></button>}{saveSheetOpen && screen !== "place-detail" && renderSaveSheet()}{renderSavedPlaceRecordEditor()}{renderCoursePicker()}{renderCourseShareSheet()}{renderPhotoGallery()}{renderLocationPermissionHelp()}{renderMapTutorial()}{renderClusterPreview()}{renderNaverNavigationConfirmSheet()}{renderNaverInstallHelpSheet()}{renderRecentDestinationManager()}{!["course-create", "place-detail", "place-navigation", "course-detail", "public-course-detail", "edit-course", "profile", "user-search", "search", "my-places", "active-course", "data-guide"].includes(screen) && <BottomNav active={selectedTab} onChange={setTab} />}</div></div></TravelModeContext.Provider>;
 }

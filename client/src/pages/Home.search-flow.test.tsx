@@ -526,6 +526,26 @@ describe("home place search flow", () => {
     expect(screen.getByRole("button", { name: "다음 장소로" })).toBeTruthy();
   });
 
+  it("distinguishes completed stops, switches the active map view, and returns to the home screen", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    await user.click(screen.getByRole("button", { name: "홈" }));
+    await user.click(screen.getByRole("button", { name: "코스 보기" }));
+
+    const mapMode = screen.getByRole("tablist", { name: "진행 지도 표시" });
+    expect(within(mapMode).getByRole("tab", { name: "코스 장소만" }).getAttribute("aria-selected")).toBe("true");
+    await user.click(within(mapMode).getByRole("tab", { name: "전체 지도" }));
+    expect(within(mapMode).getByRole("tab", { name: "전체 지도" }).getAttribute("aria-selected")).toBe("true");
+
+    await user.click(screen.getByRole("button", { name: "완료" }));
+    expect(screen.getAllByText("완료").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("현재").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "뒤로" }));
+    expect(screen.getByRole("button", { name: "코스 보기" })).toBeTruthy();
+  });
+
   it("manages course dates and status while surfacing schedule conflicts", async () => {
     const user = userEvent.setup();
     render(<Home />);
