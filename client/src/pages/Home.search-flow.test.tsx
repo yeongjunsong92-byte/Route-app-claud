@@ -235,19 +235,23 @@ describe("home place search flow", () => {
     expect(screen.getByRole("heading", { name: "내 장소" })).toBeTruthy();
   });
 
-  it("opens my courses, saved courses, and profile management from my page", async () => {
+  it("opens the course library, switches between my and saved courses, and opens profile management from my page", async () => {
     const user = userEvent.setup();
     let view = render(<Home />);
 
     await user.click(screen.getByRole("button", { name: "마이" }));
     await user.click(screen.getAllByRole("button", { name: /내 코스/ })[0]);
-    expect(screen.getByRole("heading", { name: "내 코스" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "코스" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "내 코스" }).getAttribute("aria-selected")).toBe("true");
+    await user.click(screen.getByRole("tab", { name: "저장 코스" }));
+    expect(screen.getByRole("tab", { name: "저장 코스" }).getAttribute("aria-selected")).toBe("true");
 
     view.unmount();
     view = render(<Home />);
     await user.click(screen.getByRole("button", { name: "마이" }));
-    await user.click(screen.getByRole("button", { name: /저장한 코스/ }));
-    expect(screen.getByRole("heading", { name: "저장 코스" })).toBeTruthy();
+    await user.click(screen.getAllByRole("button", { name: /저장한 코스/ })[0]);
+    expect(screen.getByRole("heading", { name: "코스" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "저장 코스" }).getAttribute("aria-selected")).toBe("true");
 
     view.unmount();
     view = render(<Home />);

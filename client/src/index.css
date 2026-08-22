@@ -100,14 +100,21 @@ img { display: block; max-width: 100%; }
 .route-status-icons { letter-spacing: -1px; font-size: 9px; }
 .route-loading, .route-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--route-bg); text-align: center; }
 .route-loading { color: var(--route-muted); font-size: 13px; }
-.route-map-entry-loader { position: absolute; z-index: 30; inset: 28px 0 0; display: grid; place-items: center; padding: 28px; background: rgba(250, 250, 250, .7); backdrop-filter: blur(7px); pointer-events: none; animation: route-map-entry-fade .22s var(--route-ease-out, cubic-bezier(.23, 1, .32, 1)) both; }
-.route-map-entry-loader-card { display: grid; justify-items: center; gap: 9px; min-width: 230px; padding: 24px 22px; border: 1px solid rgba(255, 255, 255, .84); border-radius: 22px; background: rgba(255, 255, 255, .92); box-shadow: 0 16px 44px rgba(43, 43, 43, .14); color: var(--route-text); }
-.route-map-entry-loader-card strong { font-size: 14px; letter-spacing: -.025em; }
-.route-map-entry-loader-card small { color: var(--route-muted); font-size: 11px; }
-.route-map-entry-loader-pulse { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--route-primary-light, #ffe8ef); color: var(--route-primary, #ff6891); animation: route-map-entry-pulse 1.05s ease-in-out infinite; }
-@keyframes route-map-entry-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes route-map-entry-pulse { 50% { transform: scale(1.09); opacity: .72; } }
-@media (prefers-reduced-motion: reduce) { .route-map-entry-loader, .route-map-entry-loader-pulse { animation: none; } }
+.route-map-entry-loader { position: absolute; z-index: 30; inset: 28px 0 0; display: grid; place-items: center; padding: 28px; background: var(--route-paper); color: var(--route-text); pointer-events: none; opacity: 1; transition: opacity .34s cubic-bezier(.23, 1, .32, 1); }
+.route-map-entry-loader.is-exiting { opacity: 0; }
+.route-map-entry-loader-content { display: grid; justify-items: center; gap: 12px; text-align: center; animation: route-splash-content-in .42s cubic-bezier(.23, 1, .32, 1) both; }
+.route-map-entry-loader-logo { position: relative; display: grid; place-items: center; min-width: 156px; padding: 12px 0; }
+.route-map-entry-loader-logo .route-brand-mark { position: relative; z-index: 1; font-size: 32px; animation: route-splash-logo-in .48s cubic-bezier(.23, 1, .32, 1) both; }
+.route-map-entry-loader-logo .route-brand-mark img { width: 58px; height: 58px; border-radius: 18px; box-shadow: 0 10px 24px rgba(255, 104, 145, .2); }
+.route-map-entry-loader-orbit { position: absolute; width: 86px; height: 86px; border: 1px solid rgba(255, 104, 145, .22); border-radius: 50%; animation: route-splash-orbit 1.65s ease-in-out infinite; }
+.route-map-entry-loader-card strong, .route-map-entry-loader-content > strong { font-size: 14px; letter-spacing: -.025em; }
+.route-map-entry-loader-card small, .route-map-entry-loader-content > small { color: var(--route-muted); font-size: 11px; }
+.route-map-entry-loader-pulse { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--route-primary-light, #ffe8ef); color: var(--route-primary, #ff6891); animation: route-map-entry-pulse 1.05s ease-in-out infinite; }
+@keyframes route-splash-content-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes route-splash-logo-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes route-splash-orbit { 50% { transform: scale(1.13); opacity: .42; } }
+@keyframes route-map-entry-pulse { 50% { transform: scale(1.1); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .route-map-entry-loader, .route-map-entry-loader-content, .route-map-entry-loader-logo .route-brand-mark, .route-map-entry-loader-orbit, .route-map-entry-loader-pulse { animation: none; transition: none; } }
 .route-login > div { width: 280px; }
 .route-login svg { color: var(--route-purple); }
 .route-brand-mark { display: inline-flex; align-items: center; justify-content: center; gap: 10px; color: var(--route-night); font-size: 38px; font-weight: 800; letter-spacing: -.075em; }
